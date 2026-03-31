@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>AI 企業策略協同工作站</title>
+<title>AI 企業策略協同工作站 — SMMC</title>
 
 <!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -24,49 +24,59 @@ tailwind.config = {
   darkMode: 'class',
   theme: {
     extend: {
-      colors: { 
-        primary: '#004030', 
-        secondary: '#D8C3A5' 
-      },
-      fontFamily: { 
-        sans: ['Inter', 'sans-serif'], 
-        serif: ['Merriweather', 'serif'] 
-      }
+      colors: { primary: '#004030', secondary: '#D8C3A5' },
+      fontFamily: { sans: ['Inter','sans-serif'], serif: ['Merriweather','serif'] }
     }
   }
 }
 </script>
 <style>
-@keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(15px)} to{opacity:1;transform:translateY(0)} }
 .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 .dark ::-webkit-scrollbar-thumb { background: #475569; }
-
-/* Markdown Styles */
-.markdown-body h1 { font-size: 1.5rem; font-weight: 700; color: #004030; margin-top: 1.5rem; margin-bottom: 0.75rem; }
-.dark .markdown-body h1 { color: #D8C3A5; }
-.markdown-body h2 { font-size: 1.25rem; font-weight: 700; color: #004030; margin-top: 1.25rem; margin-bottom: 0.5rem; }
-.dark .markdown-body h2 { color: #D8C3A5; }
-.markdown-body h3 { font-size: 1.125rem; font-weight: 600; color: #004030; margin-top: 1rem; margin-bottom: 0.5rem; }
-.dark .markdown-body h3 { color: #D8C3A5; }
-.markdown-body p { margin-bottom: 1rem; line-height: 1.6; }
-.markdown-body ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
-.markdown-body ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
-.markdown-body li { margin-bottom: 0.25rem; }
-.markdown-body strong { font-weight: 600; color: #1f2937; }
-.dark .markdown-body strong { color: #f3f4f6; }
+.markdown-body h1 { font-size:1.5rem;font-weight:700;color:#004030;margin-top:1.5rem;margin-bottom:0.75rem; }
+.dark .markdown-body h1 { color:#D8C3A5; }
+.markdown-body h2 { font-size:1.25rem;font-weight:700;color:#004030;margin-top:1.25rem;margin-bottom:0.5rem; }
+.dark .markdown-body h2 { color:#D8C3A5; }
+.markdown-body h3 { font-size:1.125rem;font-weight:600;color:#004030;margin-top:1rem;margin-bottom:0.5rem; }
+.dark .markdown-body h3 { color:#D8C3A5; }
+.markdown-body p { margin-bottom:1rem;line-height:1.6; }
+.markdown-body ul { list-style-type:disc;margin-left:1.5rem;margin-bottom:1rem; }
+.markdown-body ol { list-style-type:decimal;margin-left:1.5rem;margin-bottom:1rem; }
+.markdown-body li { margin-bottom:0.25rem; }
+.markdown-body strong { font-weight:600;color:#1f2937; }
+.dark .markdown-body strong { color:#f3f4f6; }
+.markdown-body table { border-collapse:collapse;width:100%;margin-bottom:1rem; }
+.markdown-body th,.markdown-body td { border:1px solid #e2e8f0;padding:0.5rem 0.75rem;text-align:left;font-size:0.875rem; }
+.dark .markdown-body th,.dark .markdown-body td { border-color:#475569; }
+.markdown-body th { background:#f8fafc;font-weight:600; }
+.dark .markdown-body th { background:#1e293b; }
 </style>
 </head>
-<body class="bg-[#f4f4f4] dark:bg-[#121212] text-slate-800 dark:text-slate-200 font-sans transition-colors min-h-screen">
+<body class="bg-[#f4f4f4] dark:bg-[#121212] text-slate-800 dark:text-slate-200 font-sans transition-colors min-h-screen selection:bg-[#004030] selection:text-white dark:selection:bg-[#D8C3A5] dark:selection:text-[#004030]">
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
-/* ===== API 環境變數設定 ===== */
-const apiKey = ""; // 執行環境會在執行期自動注入
+/* ===== Worker API 設定 ===== */
+const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev/'; // ← 替換成你的 Worker URL
+
+const api = async (action, data = {}, token = '') => {
+  const resp = await fetch(API_BASE + '/api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, token, ...data }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+    throw new Error(err.error || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+};
 
 /* ===== Icons ===== */
 const IconBot = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>;
@@ -83,6 +93,10 @@ const IconArrowUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" hei
 const IconChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
 const IconChevronUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>;
 const IconBookOpen = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>;
+const IconHistory = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+const IconLogOut = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
 
 /* ===== 雙語字典 ===== */
 const dict = {
@@ -93,43 +107,65 @@ const dict = {
     smmc_hub: "分析 TP0-TP3 基礎知識與技能，乃通過 SMMC 雙語互動學習 Hub",
     start_btn: "啟動 Agentic 分析",
     ph_company: "請輸入企業名稱 (例: 台積電, 捷安特...)",
-    opt_news: "自動蒐集網路新聞 (即時檢索)",
-    opt_ir: "深度檢索官網 / 投資人關係 (IR)",
+    opt_news: "自動蒐集網路新聞 (即時檢索)", opt_ir: "深度檢索官網 / 投資人關係 (IR)",
     opt_file: "連接 Database / 匯入多元文件",
     export_btn: "匯出分析報告 (.md)",
-    agent1: "Agent 1: 產業與環境分析師 (TP0-TP1)", 
-    agent2: "Agent 2: 資源與能耐精算師 (TP2)", 
+    agent1: "Agent 1: 產業與環境分析師 (TP0-TP1)",
+    agent2: "Agent 2: 資源與能耐精算師 (TP2)",
     agent3: "Agent 3: 集團策略長 (TP3)",
-    status_idle: "等待指示", status_rag: "🔍 檢索企業知識庫...", status_thinking: "🧠 思考與撰寫中...", status_done: "✅ 完成",
-    err_empty: "請輸入企業名稱",
-    err_api: "發生錯誤，請稍後再試。",
+    status_idle: "等待指示", status_search: "🔍 線上搜尋企業資料...",
+    status_rag: "🔍 檢索企業知識庫...", status_thinking: "🧠 思考與撰寫中...",
+    status_done: "✅ 完成", status_saving: "💾 儲存報告...",
+    err_empty: "請輸入企業名稱", err_api: "發生錯誤，請稍後再試。",
+    login_title: "Token 驗證", login_ph: "請輸入存取 Token",
+    login_btn: "驗證登入", login_err: "Token 錯誤，請重試",
+    login_hint: "請向授課教師取得存取 Token",
+    logout: "登出",
+    history_title: "歷史報告", history_empty: "尚無歷史報告",
+    history_load: "載入報告", history_search_ph: "搜尋企業名稱...",
+    history_back: "← 返回新分析",
+    tab_new: "新分析", tab_history: "歷史報告",
+    news_years: "檢索範圍：過去",
+    news_years_suffix: "年內",
+    file_support: "支援 .txt, .md 等純文字格式匯入",
+    data_source_title: "資料來源設定",
     reminders_title: "TP0~TP3 分析架構參考",
     reminders: [
-      { id: 'tp0', title: 'TP0: 企業背景與概況', items: [
-        "定義企業的基本面貌與發展軌跡，包含創立背景、核心願景 (Vision) 與使命 (Mission)。", 
+      { id:'tp0', title:'TP0: 企業背景與概況', items:[
+        "定義企業的基本面貌與發展軌跡，包含創立背景、核心願景 (Vision) 與使命 (Mission)。",
         "檢視近三到五年的財務表現概況（如營收規模、毛利率、EPS 等），以確立後續策略分析的基準點與企業目前的生命週期階段。"
       ]},
-      { id: 'tp1', title: 'TP1: 總體環境與產業分析', items: [
-        "PESTEL 分析：由外而內評估政治 (Political)、經濟 (Economic)、社會 (Social)、科技 (Technological)、環境 (Environmental) 與法律 (Legal) 等總體環境因素的潛在衝擊。", 
+      { id:'tp1', title:'TP1: 總體環境與產業分析', items:[
+        "PESTEL 分析：由外而內評估政治 (Political)、經濟 (Economic)、社會 (Social)、科技 (Technological)、環境 (Environmental) 與法律 (Legal) 等總體環境因素的潛在衝擊。",
         "五力分析 (Five Forces)：深度分析產業內的競爭程度、潛在進入者的威脅、替代品的威脅，以及供應商與買方的議價能力。",
         "產業價值鏈與生命週期定位：釐清企業在整體產業鏈（上、中、下游）中所扮演的角色、利潤池分佈，以及評估產業與企業所處的生命週期演化階段（如導入、成長、成熟或衰退期）。",
         "4P 歸納：總結企業目前的 Position (市場定位), Priority (優先發展事項), Posture (競爭姿態), 與 Profit potential (獲利潛力)。"
       ]},
-      { id: 'tp2', title: 'TP2: 資源與能耐精算', items: [
-        "企業價值鏈 (Corporate Value Chain)：拆解企業內部的主要活動（進料後勤、生產、行銷等）與支援活動（研發、人資等），找出真正的附加價值所在。", 
+      { id:'tp2', title:'TP2: 資源與能耐精算', items:[
+        "企業價值鏈 (Corporate Value Chain)：拆解企業內部的主要活動（進料後勤、生產、行銷等）與支援活動（研發、人資等），找出真正的附加價值所在。",
         "VRIN 核心能耐評估：針對盤點出的關鍵有形與無形資源，嚴格檢驗其是否具備有價值 (Valuable)、稀缺 (Rare)、難以模仿 (Inimitable) 以及不可替代 (Non-substitutable) 的特性，以確認持久競爭優勢。",
         "動態能力 (Dynamic Capabilities)：評估企業在面對快速變化的外部環境時，感知機會、掌握機會以及重組內外部資源的敏捷適應能力。"
       ]},
-      { id: 'tp3', title: 'TP3: 集團策略與未來發展', items: [
-        "成長策略構面：分析企業層級 (Corporate-level) 應如何透過「垂直整合 (Vertical Integration)」、「產品多角化 (Diversification)」或「地理區域擴張 (Geographic Expansion)」來尋求下一波成長。", 
+      { id:'tp3', title:'TP3: 集團策略與未來發展', items:[
+        "成長策略構面：分析企業層級 (Corporate-level) 應如何透過「垂直整合 (Vertical Integration)」、「產品多角化 (Diversification)」或「地理區域擴張 (Geographic Expansion)」來尋求下一波成長。",
         "進入模式 (Entry Modes)：評估上述成長策略應採取的手段，如內部自建 (Organic growth)、策略聯盟 (Strategic Alliances)、或是併購 (M&A)。",
         "未來挑戰與治理：考量企業轉型需求，並納入公司治理 (如代理問題 Agency Problem) 與利害關係人利益 (如 ESG 永續發展) 的平衡，提出具體且具前瞻性的高階策略建議。"
       ]}
     ],
     footer_desc: "致力於提供頂尖的國際企業策略分析與執行方案。",
     footer_rights: "© 2026 SMMC. 保留所有權利。",
-    footer_version: "版本: 1.0.0 (2026.03)",
-    menu_home: "首頁", menu_about: "關於 SMMC", menu_contact: "聯絡我們", menu_privacy: "隱私權政策"
+    footer_version: "Version 2.0.0 (2026.03)",
+    menu_home: "首頁", menu_about: "關於 SMMC", menu_contact: "聯絡我們", menu_privacy: "隱私權政策",
+    architect_label: "Architect:", architect_name: "Prof. Shihmin Lo",
+    architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
+    report_saved: "報告已儲存至雲端資料庫",
+    processing: "協同處理中...",
+    skeleton_agent1: "產業分析師正在彙整總體環境資料...",
+    skeleton_agent2: "資源精算師正在評估核心能耐...",
+    skeleton_agent3: "策略長正在擬定最終藍圖...",
+    report_placeholder_title: "請在左側輸入企業名稱啟動分析",
+    report_placeholder_desc: "各 Agent 將在此接力呈現報告結果",
+    rag_label: "Context Injected from Knowledge Base",
   },
   en: {
     brand: "SMMC",
@@ -138,258 +174,369 @@ const dict = {
     smmc_hub: "TP0-TP3 foundational knowledge is acquired via SMMC Executive Hub",
     start_btn: "Start Agentic Analysis",
     ph_company: "Enter Company Name (e.g., TSMC, Giant...)",
-    opt_news: "Auto-collect Web News (Real-time)",
-    opt_ir: "Deep Search Official Site / IR pages",
+    opt_news: "Auto-collect Web News (Real-time)", opt_ir: "Deep Search Official Site / IR pages",
     opt_file: "Connect Database / Import Files",
     export_btn: "Export Report (.md)",
-    agent1: "Agent 1: Macro & Industry Analyst (TP0-TP1)", 
-    agent2: "Agent 2: Resources & Capabilities (TP2)", 
+    agent1: "Agent 1: Macro & Industry Analyst (TP0-TP1)",
+    agent2: "Agent 2: Resources & Capabilities (TP2)",
     agent3: "Agent 3: Corporate Strategy & Future (TP3)",
-    status_idle: "Awaiting input", status_rag: "🔍 Retrieving knowledge...", status_thinking: "🧠 Thinking...", status_done: "✅ Done",
-    err_empty: "Please enter a company name.",
-    err_api: "An error occurred, please try again.",
-    reminders_title: "TP0~TP3 Reminders Framework",
+    status_idle: "Awaiting input", status_search: "🔍 Searching company data online...",
+    status_rag: "🔍 Retrieving knowledge...", status_thinking: "🧠 Thinking...",
+    status_done: "✅ Done", status_saving: "💾 Saving report...",
+    err_empty: "Please enter a company name.", err_api: "An error occurred, please try again.",
+    login_title: "Token Verification", login_ph: "Enter access token",
+    login_btn: "Verify & Login", login_err: "Invalid token, please retry",
+    login_hint: "Please obtain the access token from your instructor",
+    logout: "Logout",
+    history_title: "Report History", history_empty: "No reports yet",
+    history_load: "Load Report", history_search_ph: "Search company name...",
+    history_back: "← Back to New Analysis",
+    tab_new: "New Analysis", tab_history: "Report History",
+    news_years: "Search range: past",
+    news_years_suffix: "years",
+    file_support: "Supports .txt, .md and other plain text formats",
+    data_source_title: "Data Source Settings",
+    reminders_title: "TP0~TP3 Framework Reference",
     reminders: [
-      { id: 'tp0', title: 'TP0: Background & Overview', items: [
-        "Define the fundamental profile and trajectory of the enterprise, including founding background, core Vision, and Mission.", 
+      { id:'tp0', title:'TP0: Background & Overview', items:[
+        "Define the fundamental profile and trajectory of the enterprise, including founding background, core Vision, and Mission.",
         "Review financial performance over the past 3-5 years (e.g., revenue, gross margin, EPS) to establish a baseline for strategic analysis and identify the current stage of the corporate life cycle."
       ]},
-      { id: 'tp1', title: 'TP1: Macro & Industry Analysis', items: [
-        "PESTEL Analysis: An outside-in evaluation of potential impacts from Political, Economic, Social, Technological, Environmental, and Legal factors.", 
+      { id:'tp1', title:'TP1: Macro & Industry Analysis', items:[
+        "PESTEL Analysis: An outside-in evaluation of potential impacts from Political, Economic, Social, Technological, Environmental, and Legal factors.",
         "Five Forces Analysis: Deep dive into industry rivalry, threat of new entrants, threat of substitutes, and the bargaining power of both suppliers and buyers.",
-        "Industry Value Chain & Life Cycle: Clarify the firm's role within the overall industry chain (upstream, midstream, downstream), the distribution of the profit pool, and assess the stage of life cycle evolution (e.g., introduction, growth, maturity, or decline).",
+        "Industry Value Chain & Life Cycle: Clarify the firm's role within the overall industry chain (upstream, midstream, downstream), the distribution of the profit pool, and assess the stage of life cycle evolution.",
         "4P Summary: Conclude the firm's current Position, Priority, Posture, and Profit potential."
       ]},
-      { id: 'tp2', title: 'TP2: Resources & Capabilities', items: [
-        "Corporate Value Chain: Breakdown of primary activities (inbound logistics, operations, marketing) and support activities (R&D, HR) to pinpoint true value addition.", 
+      { id:'tp2', title:'TP2: Resources & Capabilities', items:[
+        "Corporate Value Chain: Breakdown of primary activities (inbound logistics, operations, marketing) and support activities (R&D, HR) to pinpoint true value addition.",
         "VRIN Assessment: Rigorously test key tangible and intangible resources for being Valuable, Rare, Inimitable, and Non-substitutable to confirm sustainable competitive advantage.",
         "Dynamic Capabilities: Evaluate the firm's agility to sense opportunities, seize them, and reconfigure internal/external resources in rapidly changing environments."
       ]},
-      { id: 'tp3', title: 'TP3: Corporate Strategy & Future', items: [
-        "Growth Strategies: Analyze how the corporate level should pursue growth through Vertical Integration, Product Diversification, or Geographic Expansion.", 
+      { id:'tp3', title:'TP3: Corporate Strategy & Future', items:[
+        "Growth Strategies: Analyze how the corporate level should pursue growth through Vertical Integration, Product Diversification, or Geographic Expansion.",
         "Entry Modes: Evaluate the mechanisms for executing these growth strategies, such as Organic growth, Strategic Alliances, or Mergers and Acquisitions (M&A).",
         "Future Challenges & Governance: Address transformation needs, balancing corporate governance (e.g., the Agency Problem) and stakeholder interests (e.g., ESG sustainability), to provide forward-looking strategic recommendations."
       ]}
     ],
     footer_desc: "Dedicated to providing top-tier strategy analysis and deployment solutions for multinational corporations.",
     footer_rights: "© 2026 SMMC. All rights reserved.",
-    footer_version: "Version: 1.0.0 (Mar 2026)",
-    menu_home: "Home", menu_about: "About SMMC", menu_contact: "Contact Us", menu_privacy: "Privacy Policy"
+    footer_version: "Version 2.0.0 (Mar 2026)",
+    menu_home: "Home", menu_about: "About SMMC", menu_contact: "Contact Us", menu_privacy: "Privacy Policy",
+    architect_label: "Architect:", architect_name: "Prof. Shihmin Lo",
+    architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
+    report_saved: "Report saved to cloud database",
+    processing: "Processing...",
+    skeleton_agent1: "Industry analyst compiling macro environment data...",
+    skeleton_agent2: "Resource analyst evaluating core capabilities...",
+    skeleton_agent3: "CSO drafting the final strategic blueprint...",
+    report_placeholder_title: "Enter a company name on the left to begin",
+    report_placeholder_desc: "Agent reports will be presented here sequentially",
+    rag_label: "Context Injected from Knowledge Base",
   }
 };
 
-/* ===== 模擬純前端 RAG 本地知識庫 ===== */
-const MOCK_KNOWLEDGE_BASE = [
-  { keywords: ["台積電", "TSMC"], data: "台積電(TSMC)成立於1987年，是全球最大的專業積體電路製造服務公司。財務表現：2023年毛利率維持50%以上，資本支出主要用於2奈米及3奈米先進製程。近年面對地緣政治(PESTEL-Political)壓力，積極赴美、日、德設廠(Geographical Expansion)。核心能耐(VRIN)在於極高的良率與不與客戶競爭的信任模式(Foundry model)。" },
-  { keywords: ["巨大", "捷安特", "GIANT"], data: "巨大機械(捷安特)為全球自行車龍頭。產品涵蓋一般自行車與高毛利的E-bike(電動輔助自行車)。近年受後疫情時代庫存去化影響(Macro environment)。價值鏈(Value Chain)涵蓋研發、製造到全球經銷通路(微笑曲線兩端)。動態能力(Dynamic Capabilities)展現於對環保減碳趨勢的快速響應及智慧化生產導入。" },
-  { keywords: ["聯發科", "MEDIATEK"], data: "聯發科技(MediaTek)為全球第四大無晶圓廠半導體公司。主要產品包含智慧型手機晶片(天璣系列)、智慧家庭設備與無線通訊晶片。近期積極佈局邊緣運算AI(Edge AI)市場。面臨來自高通(Qualcomm)的強烈競爭(Five Forces - Rivalry)。" }
-];
+/* ===== Agent System Prompts ===== */
+const getAgentPrompts = (company, lang, ragContext, optionsPrompt, prevReports) => {
+  const langStr = lang === 'zh' ? '繁體中文(台灣用語)' : 'English';
+  const noSimplified = lang === 'zh' ? '絕對不使用中國大陸的簡體中文用語(如：項目、數據庫、視頻、賦能等)，請使用台灣標準用語(如：專案、資料庫、影片、賦予能力等)。' : '';
+  return {
+    agent1: {
+      system: `你是一位資深的「總體經濟與產業分析師」。語言：${langStr}。${noSimplified}請根據課綱完成 TP0 與 TP1。輸出需結構化(使用 Markdown)。`,
+      user: `分析對象: ${company}。\n【內部參考資料(RAG)】: ${ragContext}\n【動態設定要求】: ${optionsPrompt}\n【任務要求】:\n1. TP0: 摘要公司歷史、願景與近年財務表現概況。\n2. TP1: 進行最關鍵的 PESTEL 總體環境分析(挑選最關鍵的2-3項即可)。\n3. TP1: 進行五力分析(Five Forces)與產業價值鏈定位。\n4. 結論: 歸納該公司的 4P (Position, Priority, Posture, Profit potential)。`
+    },
+    agent2: {
+      system: `你是一位資深的「企業資源與價值鏈精算師」。語言：${langStr}。${noSimplified}請接續前一階段分析師的報告，完成 TP2 分析。`,
+      user: `分析對象: ${company}。\n【Agent 1(產業分析師)報告節錄】: ${(prevReports.agent1||'').substring(0,1500)}...\n【任務要求】:\n1. TP2: 分析核心事業與產品線的營收流向。\n2. TP2: 拆解企業價值鏈(Corporate Value Chain)的關鍵活動。\n3. TP2: 找出3-4個關鍵資源(有形/無形)，並用 VRIN 架構評估其核心能耐。\n4. TP2: 指出其近期的「動態能力(Dynamic Capabilities)」。`
+    },
+    agent3: {
+      system: `你是一位頂尖的「集團策略長(CSO)」。語言：${langStr}。${noSimplified}請綜合前兩個階段的產出，完成最後的高階策略建議 (TP3)。`,
+      user: `分析對象: ${company}。\n【Agent 1 報告節錄】: ${(prevReports.agent1||'').substring(0,1000)}...\n【Agent 2 報告節錄】: ${(prevReports.agent2||'').substring(0,1000)}...\n【任務要求】:\n1. TP3: 分析其近年在「垂直整合(VI)」、「產品多角化(HD)」或「地理區域擴張(GE)」的集團策略行動與進入模式(併購、聯盟或自建)。\n2. TP3: 基於企業生命週期，針對未來創新與轉型，提出 2-3 點具體挑戰與高階策略建議。\n3. 需考量內外部利害關係人(如 ESG, Agency problem 等議題)。`
+    }
+  };
+};
 
-/* ===== API 呼叫模組 (具備指數退避重試機制) ===== */
-const callGeminiWithRetry = async (systemPrompt, userPrompt, retryCount = 0) => {
-  const delays = [1000, 2000, 4000, 8000, 16000];
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+/* ===== Login Screen ===== */
+function LoginScreen({ onLogin, lang, setLang }) {
+  const [token, setToken] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+  const t = dict[lang];
 
-  const payload = {
-    contents: [{ parts: [{ text: userPrompt }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] }
+  useEffect(() => {
+    if (isDark) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [isDark]);
+
+  const handleLogin = async () => {
+    if (!token.trim()) return;
+    setLoading(true); setError('');
+    try {
+      const res = await api('auth', { token });
+      if (res.ok) { onLogin(token); }
+      else { setError(t.login_err); }
+    } catch { setError(t.login_err); }
+    setLoading(false);
   };
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[#f4f4f4] dark:bg-[#121212]">
+      <div className="w-full max-w-md animate-fade-in">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="p-3 bg-primary/10 dark:bg-secondary/10 rounded-xl"><IconBot /></div>
+            <span className="font-serif font-black text-3xl tracking-widest text-primary dark:text-secondary">{t.brand}</span>
+          </div>
+          <h1 className="font-serif font-bold text-xl text-primary dark:text-secondary">{t.title}</h1>
+          <p className="text-sm text-slate-500 mt-1">{t.subtitle}</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 border border-slate-200 dark:border-slate-700 shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <IconLock />
+            <h2 className="font-serif font-bold text-lg text-primary dark:text-secondary">{t.login_title}</h2>
+          </div>
+          <input type="password" value={token} onChange={e => setToken(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder={t.login_ph}
+            className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white mb-4" />
+          {error && <p className="text-red-500 text-sm mb-4 flex items-center gap-1"><IconAlert />{error}</p>}
+          <button onClick={handleLogin} disabled={loading || !token.trim()}
+            className="w-full py-3 rounded-xl font-bold bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex justify-center items-center gap-2">
+            {loading ? <><IconLoader /> {t.processing}</> : t.login_btn}
+          </button>
+          <p className="text-xs text-slate-400 mt-4 text-center">{t.login_hint}</p>
+        </div>
+        <div className="flex justify-center gap-2 mt-6">
+          <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')}
+            className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50">
+            {lang === 'zh' ? 'EN' : '中文'}
+          </button>
+          <button onClick={() => setIsDark(d => !d)}
+            className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50">
+            {isDark ? <IconSun /> : <IconMoon />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-    if (!response.ok) {
-      throw new Error(`API 請求失敗: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  } catch (error) {
-    if (retryCount < delays.length) {
-      console.warn(`API 錯誤，將於 ${delays[retryCount]} 毫秒後重試 (${retryCount + 1}/${delays.length})...`);
-      await new Promise(resolve => setTimeout(resolve, delays[retryCount]));
-      return callGeminiWithRetry(systemPrompt, userPrompt, retryCount + 1);
-    }
-    throw new Error("API 呼叫失敗，已達最大重試次數。");
-  }
-};
-
-/* ===== 主應用程式組件 ===== */
+/* ===== Main Application ===== */
 function App() {
+  const [authToken, setAuthToken] = useState(() => sessionStorage.getItem('smmc_token') || '');
   const [lang, setLang] = useState('zh');
   const [isDark, setIsDark] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  const [company, setCompany] = useState('');
 
-  // 新增：設定選項狀態
-  const [optNews, setOptNews] = useState(false);
+  const [company, setCompany] = useState('');
+  const [optNews, setOptNews] = useState(true);
   const [newsYears, setNewsYears] = useState(3);
-  const [optIR, setOptIR] = useState(false);
+  const [optIR, setOptIR] = useState(true);
   const [optFile, setOptFile] = useState(false);
   const [fileContents, setFileContents] = useState('');
-  
-  // 更改狀態管理，使用 activeReminder 來控制目前展開的 TP 區塊
-  const [activeReminder, setActiveReminder] = useState(null);
 
-  const [workflowState, setWorkflowState] = useState('idle'); // idle, rag, agent1, agent2, agent3, done, error
+  const [activeReminder, setActiveReminder] = useState(null);
+  const [activeTab, setActiveTab] = useState('new'); // 'new' or 'history'
+  const [workflowState, setWorkflowState] = useState('idle');
   const [ragContext, setRagContext] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  
-  const [reports, setReports] = useState({ agent1: '', agent2: '', agent3: '' });
+  const [reports, setReports] = useState({ agent1:'', agent2:'', agent3:'' });
+  const [savedMsg, setSavedMsg] = useState('');
+
+  // History state
+  const [historyList, setHistoryList] = useState([]);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [viewingReport, setViewingReport] = useState(null);
+
   const t = dict[lang];
 
-  useEffect(() => { 
-    if (isDark) {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-    }
+  useEffect(() => {
+    if (isDark) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [isDark]);
 
-  // 新增：處理本地檔案匯入
+  const handleLogin = (token) => {
+    setAuthToken(token);
+    sessionStorage.setItem('smmc_token', token);
+  };
+
+  const handleLogout = () => {
+    setAuthToken('');
+    sessionStorage.removeItem('smmc_token');
+  };
+
+  // Load history when tab changes
+  useEffect(() => {
+    if (activeTab === 'history' && authToken) {
+      loadHistory();
+    }
+  }, [activeTab]);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await api('list_reports', { company: historySearch || undefined }, authToken);
+      if (res.ok) setHistoryList(res.reports || []);
+    } catch (err) { console.error(err); }
+    setHistoryLoading(false);
+  };
+
+  const loadReport = async (reportId) => {
+    try {
+      const res = await api('get_report', { reportId }, authToken);
+      if (res.ok && res.report) {
+        setViewingReport(res.report);
+        setReports({ agent1: res.report.agent1, agent2: res.report.agent2, agent3: res.report.agent3 });
+        setCompany(res.report.company);
+        setRagContext(res.report.rag_context || '');
+        setWorkflowState('done');
+        setActiveTab('new');
+      }
+    } catch (err) { console.error(err); }
+  };
+
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
-    if (files.length === 0) {
-        setFileContents('');
-        return;
-    }
-    
-    let allText = '';
-    let processed = 0;
-    
+    if (!files.length) { setFileContents(''); return; }
+    let allText = ''; let processed = 0;
     files.forEach(file => {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        allText += `\n--- 匯入文件: ${file.name} ---\n${event.target.result}\n`;
+      reader.onload = (ev) => {
+        allText += `\n--- 匯入文件: ${file.name} ---\n${ev.target.result}\n`;
         processed++;
         if (processed === files.length) setFileContents(allText);
       };
-      reader.readAsText(file); // 支援純文字格式讀取
+      reader.readAsText(file);
     });
   };
 
-  // 新增：匯出 Markdown 報告功能
   const exportReport = () => {
     const content = `# ${company} 企業策略綜合分析報告\n\n` +
-                    `> 報告產出時間：${new Date().toLocaleString()}\n` +
-                    `> 理論基礎：SMMC 雙語互動學習 Hub (TP0-TP3)\n\n` +
-                    `## ${t.agent1}\n${reports.agent1}\n\n` +
-                    `## ${t.agent2}\n${reports.agent2}\n\n` +
-                    `## ${t.agent3}\n${reports.agent3}\n`;
+      `> 報告產出時間：${new Date().toLocaleString()}\n` +
+      `> 理論基礎：SMMC 雙語互動學習 Hub (TP0-TP3)\n\n` +
+      `## ${t.agent1}\n${reports.agent1}\n\n` +
+      `## ${t.agent2}\n${reports.agent2}\n\n` +
+      `## ${t.agent3}\n${reports.agent3}\n`;
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${company}_SMMC策略分析報告.md`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${company}_SMMC策略分析報告.md`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
-  const runWorkflow = async () => {
-    if (!company.trim()) {
-        setErrorMsg(t.err_empty);
-        return;
-    }
+  const isWorking = !['idle','done','error'].includes(workflowState);
 
-    setErrorMsg('');
-    setReports({ agent1: '', agent2: '', agent3: '' });
-    
+  /* ===== Main Workflow ===== */
+  const runWorkflow = async () => {
+    if (!company.trim()) { setErrorMsg(t.err_empty); return; }
+    setErrorMsg(''); setSavedMsg(''); setViewingReport(null);
+    setReports({ agent1:'', agent2:'', agent3:'' });
+    const currentReports = { agent1:'', agent2:'', agent3:'' };
+
     try {
-      // ===== 階段 0: RAG 檢索 =====
+      // Phase 0: Web search (if options enabled)
+      if (optNews || optIR) {
+        setWorkflowState('search');
+        await api('search', { company, optNews, newsYears, optIR, lang }, authToken);
+      }
+
+      // Phase 1: RAG retrieve
       setWorkflowState('rag');
-      await new Promise(r => setTimeout(r, 1200)); 
-      const foundData = MOCK_KNOWLEDGE_BASE.find(db => db.keywords.some(k => company.toUpperCase().includes(k.toUpperCase())));
-      let context = foundData ? foundData.data : (lang === 'zh' ? "本地資料庫無相符資料，請依賴您的通用知識庫進行推論分析。" : "No local data found. Rely on your general knowledge for analysis.");
-      
-      // 將匯入的文件內容加入 Context
+      const ragRes = await api('rag_retrieve', { company }, authToken);
+      let context = ragRes.context || (lang === 'zh'
+        ? '知識庫無相符資料，請依賴通用知識進行推論分析。'
+        : 'No data found in knowledge base. Rely on general knowledge for analysis.');
+
       if (optFile && fileContents) {
-          context += `\n\n【使用者匯入外部資料】：\n${fileContents}`;
+        context += `\n\n【使用者匯入外部資料】：\n${fileContents}`;
       }
       setRagContext(context);
 
-      // 動態構建選項指令 Prompt
-      let optionsPrompt = "";
-      if (optNews) optionsPrompt += `\n- 請特別著重搜尋並整合該企業過去 ${newsYears} 年內的最新網路新聞與市場動態。`;
-      if (optIR) optionsPrompt += `\n- 請模擬檢視並著重分析該公司的官方網站 (About 頁面) 以及投資人關係 (Investor Relations, IR) 分頁的公開資訊與財報指引。`;
+      let optionsPrompt = '';
+      if (optNews) optionsPrompt += `\n- 請特別著重整合該企業過去 ${newsYears} 年內的最新網路新聞與市場動態。`;
+      if (optIR) optionsPrompt += `\n- 請著重分析該公司的官方網站與投資人關係 (IR) 公開資訊。`;
 
-      // ===== 階段 1: Agent 1 (產業分析師) =====
+      const prompts = getAgentPrompts(company, lang, context, optionsPrompt, currentReports);
+
+      // Phase 2: Agent 1
       setWorkflowState('agent1');
-      const sys1 = `你是一位資深的「總體經濟與產業分析師」。語言：${lang==='zh'?'繁體中文(台灣用語)':'English'}。絕對不使用中國大陸的簡體中文用語(如：項目、數據庫、視頻、賦能等)，請使用台灣標準用語(如：專案、資料庫、影片、賦予能力等)。請根據課綱完成 TP0與TP1。輸出需結構化(使用 Markdown)。`;
-      const prompt1 = `分析對象: ${company}。
-      【內部參考資料(RAG)】: ${context}
-      【動態設定要求】: ${optionsPrompt}
-      【任務要求】:
-      1. TP0: 摘要公司歷史、願景與近年財務表現概況。
-      2. TP1: 進行最關鍵的 PESTEL 總體環境分析(挑選最關鍵的2-3項即可)。
-      3. TP1: 進行五力分析(Five Forces)與產業價值鏈定位。
-      4. 結論: 歸納該公司的 4P (Position, Priority, Posture, Profit potential)。`;
-      
-      const res1 = await callGeminiWithRetry(sys1, prompt1);
-      setReports(prev => ({ ...prev, agent1: res1 }));
+      const r1 = await api('analyze', {
+        company, agentId: 'agent1',
+        systemPrompt: prompts.agent1.system,
+        userPrompt: prompts.agent1.user
+      }, authToken);
+      currentReports.agent1 = r1.content;
+      setReports(prev => ({ ...prev, agent1: r1.content }));
 
-      // ===== 階段 2: Agent 2 (資源精算師) - Context Chaining =====
+      // Update prompts with agent1 result for chaining
+      const prompts2 = getAgentPrompts(company, lang, context, optionsPrompt, currentReports);
+
+      // Phase 3: Agent 2
       setWorkflowState('agent2');
-      const sys2 = `你是一位資深的「企業資源與價值鏈精算師」。語言：${lang==='zh'?'繁體中文(台灣用語)':'English'}。絕對不使用簡體中文用語。請接續前一階段分析師的報告，完成 TP2 分析。`;
-      const prompt2 = `分析對象: ${company}。
-      【Agent 1(產業分析師)報告節錄】: ${res1.substring(0, 1500)}...
-      【任務要求】:
-      1. TP2: 分析核心事業與產品線的營收流向。
-      2. TP2: 拆解企業價值鏈(Corporate Value Chain)的關鍵活動。
-      3. TP2: 找出3-4個關鍵資源(有形/無形)，並用 VRIN 架構評估其核心能耐。
-      4. TP2: 指出其近期的「動態能力(Dynamic Capabilities)」。`;
-      
-      const res2 = await callGeminiWithRetry(sys2, prompt2);
-      setReports(prev => ({ ...prev, agent2: res2 }));
+      const r2 = await api('analyze', {
+        company, agentId: 'agent2',
+        systemPrompt: prompts2.agent2.system,
+        userPrompt: prompts2.agent2.user
+      }, authToken);
+      currentReports.agent2 = r2.content;
+      setReports(prev => ({ ...prev, agent2: r2.content }));
 
-      // ===== 階段 3: Agent 3 (策略長) - Context Chaining =====
+      const prompts3 = getAgentPrompts(company, lang, context, optionsPrompt, currentReports);
+
+      // Phase 4: Agent 3
       setWorkflowState('agent3');
-      const sys3 = `你是一位頂尖的「集團策略長(CSO)」。語言：${lang==='zh'?'繁體中文(台灣用語)':'English'}。絕對不使用簡體中文用語。請綜合前兩個階段的產出，完成最後的高階策略建議 (TP3)。`;
-      const prompt3 = `分析對象: ${company}。
-      【Agent 1 報告節錄】: ${res1.substring(0, 1000)}...
-      【Agent 2 報告節錄】: ${res2.substring(0, 1000)}...
-      【任務要求】:
-      1. TP3: 分析其近年在「垂直整合(VI)」、「產品多角化(HD)」或「地理區域擴張(GE)」的集團策略行動與進入模式(併購、聯盟或自建)。
-      2. TP3: 基於企業生命週期，針對未來創新與轉型，提出 2-3 點具體挑戰與高階策略建議。
-      3. 需考量內外部利害關係人(如 ESG, Agency problem 等議題)。`;
-      
-      const res3 = await callGeminiWithRetry(sys3, prompt3);
-      setReports(prev => ({ ...prev, agent3: res3 }));
+      const r3 = await api('analyze', {
+        company, agentId: 'agent3',
+        systemPrompt: prompts3.agent3.system,
+        userPrompt: prompts3.agent3.user
+      }, authToken);
+      currentReports.agent3 = r3.content;
+      setReports(prev => ({ ...prev, agent3: r3.content }));
+
+      // Phase 5: Save report
+      setWorkflowState('saving');
+      await api('save_report', {
+        company, lang,
+        agent1: currentReports.agent1,
+        agent2: currentReports.agent2,
+        agent3: currentReports.agent3,
+        ragContext: context,
+        options: { optNews, newsYears, optIR, optFile }
+      }, authToken);
+      setSavedMsg(t.report_saved);
 
       setWorkflowState('done');
-    } catch (error) {
-      console.error(error);
-      setErrorMsg(t.err_api + " " + error.message);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(t.err_api + ' ' + err.message);
       setWorkflowState('error');
     }
   };
 
   const getStatusUI = (agentState) => {
-    const states = ['idle', 'rag', 'agent1', 'agent2', 'agent3', 'done', 'error'];
+    const states = ['idle','search','rag','agent1','agent2','agent3','saving','done','error'];
     const curIdx = states.indexOf(workflowState);
     const agtIdx = states.indexOf(agentState);
-    
     if (workflowState === 'error') return <span className="text-red-500 text-sm">暫停</span>;
     if (curIdx > agtIdx) return <span className="text-green-600 dark:text-green-400 font-bold flex items-center gap-1"><IconCheck/> {t.status_done}</span>;
     if (curIdx === agtIdx) return <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1"><IconLoader/> {t.status_thinking}</span>;
     return <span className="text-slate-400 text-sm">{t.status_idle}</span>;
   };
 
+  // Auth gate
+  if (!authToken) {
+    return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} />;
+  }
+
   return (
     <div className="flex flex-col h-full min-h-screen">
-      {/* 導覽列 Navbar */}
+      {/* Navbar */}
       <header className="sticky top-0 z-50 bg-primary text-white shadow-md border-b border-secondary/30">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div 
-            className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            title={lang === 'zh' ? '回到頂端' : 'Back to Top'}
-          >
+          <div className="flex items-center gap-3 cursor-pointer group"
+            onClick={() => window.scrollTo({top:0,behavior:'smooth'})} title={lang==='zh'?'回到頂端':'Back to Top'}>
             <div className="p-2 bg-secondary/20 rounded-lg hidden sm:block group-hover:bg-secondary/40 transition-colors"><IconBot /></div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
@@ -402,324 +549,344 @@ function App() {
               </h1>
             </div>
           </div>
-          
-          {/* 桌面版操作列 */}
           <div className="hidden md:flex items-center gap-2">
-            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-secondary/80 hover:text-white transition-colors mr-2 border border-secondary/30 px-2 py-1 rounded">
+            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer"
+              className="flex items-center gap-1 text-xs text-secondary/80 hover:text-white transition-colors mr-2 border border-secondary/30 px-2 py-1 rounded">
               <IconLink /> SMMC Hub
             </a>
-            <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className="px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
-              {lang === 'zh' ? 'EN' : '中文'}
+            <button onClick={() => setLang(l => l==='zh'?'en':'zh')} className="px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+              {lang==='zh'?'EN':'中文'}
             </button>
-            <button onClick={() => setIsDark(d => !d)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Toggle Theme">
+            <button onClick={() => setIsDark(d=>!d)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Toggle Theme">
               {isDark ? <IconSun /> : <IconMoon />}
             </button>
+            <button onClick={handleLogout} className="flex items-center gap-1 px-2 py-1.5 text-xs text-secondary/70 hover:text-white transition-colors" title={t.logout}>
+              <IconLogOut /> <span className="hidden lg:inline">{t.logout}</span>
+            </button>
           </div>
-
-          {/* 手機版漢堡按鈕 */}
           <div className="md:hidden flex items-center">
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-secondary">
               {isMobileMenuOpen ? <IconX /> : <IconMenu />}
             </button>
           </div>
         </div>
-
-        {/* 手機版展開漢堡目錄 */}
         {isMobileMenuOpen && (
           <div className="md:hidden bg-primary dark:bg-slate-900 border-b border-secondary/20 px-6 py-5 shadow-xl flex flex-col gap-5 animate-fade-in absolute w-full top-16 left-0 z-40">
-            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-white hover:text-secondary transition-colors border-b border-white/10 pb-4">
-              <IconLink /> 前往 SMMC Hub
+            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer"
+              className="flex items-center gap-2 text-sm text-white hover:text-secondary transition-colors border-b border-white/10 pb-4">
+              <IconLink /> SMMC Hub
             </a>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white/80">介面語言 (Language)</span>
-              <button onClick={() => { setLang(l => l === 'zh' ? 'en' : 'zh'); setIsMobileMenuOpen(false); }} className="px-4 py-2 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white">
-                {lang === 'zh' ? '切換至 English' : 'Switch to 中文'}
+              <span className="text-sm font-medium text-white/80">Language</span>
+              <button onClick={() => {setLang(l => l==='zh'?'en':'zh'); setIsMobileMenuOpen(false);}} className="px-4 py-2 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg text-white">
+                {lang==='zh'?'English':'中文'}
               </button>
             </div>
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-sm font-medium text-white/80">深色模式 (Theme)</span>
-              <button onClick={() => { setIsDark(d => !d); setIsMobileMenuOpen(false); }} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold text-white">
-                {isDark ? <><IconSun /> 淺色外觀</> : <><IconMoon /> 深色外觀</>}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-white/80">Theme</span>
+              <button onClick={() => {setIsDark(d=>!d); setIsMobileMenuOpen(false);}} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg flex items-center gap-2 text-xs font-bold text-white">
+                {isDark ? <><IconSun/> Light</> : <><IconMoon/> Dark</>}
               </button>
             </div>
+            <button onClick={() => {handleLogout(); setIsMobileMenuOpen(false);}} className="flex items-center gap-2 text-sm text-red-300 hover:text-red-100 transition-colors pt-2 border-t border-white/10">
+              <IconLogOut /> {t.logout}
+            </button>
           </div>
         )}
       </header>
 
-      {/* 新增：SMMC Hub 橫幅提示 */}
+      {/* SMMC Hub Banner */}
       <div className="bg-secondary/10 dark:bg-secondary/5 border-b border-secondary/20 py-2 px-4 text-center">
         <p className="text-xs sm:text-sm text-primary dark:text-secondary flex items-center justify-center gap-2">
-          <IconLink /> {t.smmc_hub} 
+          <IconLink /> {t.smmc_hub}
           <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="underline font-bold hover:text-primary/70 ml-1">
-            (點此登入)
+            ({lang==='zh'?'點此登入':'Login'})
           </a>
         </p>
       </div>
 
-      {/* 主體版面 Layout */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* 左側欄：控制台與狀態追蹤 (Control & Workflow Status) */}
-        <div className="lg:col-span-4 space-y-6 flex flex-col">
-          
-          {/* 輸入面板 */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-            <h2 className="font-serif font-bold text-primary dark:text-secondary mb-4 text-lg">1. Target Company</h2>
-            <input 
-              type="text" 
-              value={company} 
-              onChange={e => setCompany(e.target.value)} 
-              disabled={workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error'}
-              placeholder={t.ph_company}
-              className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white" 
-            />
-            
-            {/* 新增：資料來源選項設定 */}
-            <div className="mt-4 mb-6 space-y-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">資料來源設定</h3>
-              
-              {/* 選項 1: 網路新聞 */}
-              <label className="flex items-start gap-2 cursor-pointer group">
-                <input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error'} className="mt-1 rounded text-primary focus:ring-primary/50" />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors">{t.opt_news}</span>
-                  {optNews && (
-                    <div className="mt-1 flex items-center gap-2 text-xs">
-                      <span className="text-slate-500">檢索範圍：過去</span>
-                      <select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">
-                        {[1,2,3,4,5].map(y => <option key={y} value={y}>{y} 年內</option>)}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </label>
-
-              {/* 選項 2: 官網 / IR */}
-              <label className="flex items-start gap-2 cursor-pointer group">
-                <input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error'} className="mt-1 rounded text-primary focus:ring-primary/50" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors leading-tight pt-0.5">{t.opt_ir}</span>
-              </label>
-
-              {/* 選項 3: 本地資料庫 / 檔案匯入 */}
-              <label className="flex items-start gap-2 cursor-pointer group">
-                <input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error'} className="mt-1 rounded text-primary focus:ring-primary/50" />
-                <div className="flex flex-col w-full">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>
-                  {optFile && (
-                    <div className="mt-2">
-                      <input type="file" multiple accept=".txt,.md,.csv,.json" onChange={handleFileUpload} disabled={workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error'}
-                        className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
-                      <p className="text-[10px] text-slate-400 mt-1">支援 .txt, .md 等純文字格式匯入</p>
-                    </div>
-                  )}
-                </div>
-              </label>
-            </div>
-
-            <button 
-              onClick={runWorkflow} 
-              disabled={workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error'}
-              className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
-            >
-              {(workflowState !== 'idle' && workflowState !== 'done' && workflowState !== 'error') 
-                ? <><IconLoader/> 協同處理中...</> 
-                : t.start_btn}
-            </button>
-
-            {/* 錯誤訊息提示 */}
-            {errorMsg && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 border border-red-200 dark:border-red-800/30">
-                <IconAlert className="shrink-0 mt-0.5" />
-                <p>{errorMsg}</p>
-              </div>
-            )}
-          </div>
-
-          {/* 工作流追蹤器 */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden flex-1">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-secondary/5 rounded-bl-full pointer-events-none"></div>
-            <h2 className="font-serif font-bold text-primary dark:text-secondary mb-6 text-lg">2. Agentic Workflow</h2>
-            
-            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 dark:before:via-slate-600 before:to-transparent">
-              
-              {/* RAG 步驟 */}
-              <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 transition-colors">
-                  <span className="text-sm font-bold">DB</span>
-                </div>
-                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
-                  <p className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">Local RAG</p>
-                  <div className="text-xs">
-                    {workflowState === 'rag' 
-                      ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_rag}</span> 
-                      : (workflowState !== 'idle' && workflowState !== 'error' ? <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><IconCheck/> Retrieved</span> : <span className="text-slate-400">Waiting</span>)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Agents 步驟 */}
-              {[{id:'agent1', name: t.agent1, icon: 'TP1'}, {id:'agent2', name: t.agent2, icon: 'TP2'}, {id:'agent3', name: t.agent3, icon: 'TP3'}].map((agt) => (
-                <div key={agt.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 transition-colors
-                    ${reports[agt.id] ? 'bg-primary dark:bg-secondary text-white dark:text-primary' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
-                    <span className="text-xs font-bold">{agt.icon}</span>
-                  </div>
-                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
-                    <p className="font-bold text-xs text-slate-700 dark:text-slate-300 mb-1 leading-tight">{agt.name}</p>
-                    <div className="text-xs">{getStatusUI(agt.id)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 新增：TP0~TP3 分析架構參考區塊 (手風琴式下拉) */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-            <div className="flex items-center gap-2 text-primary dark:text-secondary mb-4">
-              <IconBookOpen />
-              <h2 className="font-serif font-bold text-lg">{t.reminders_title}</h2>
-            </div>
-            
-            <div className="space-y-3">
-              {t.reminders.map((rem) => {
-                const isOpen = activeReminder === rem.id;
-                return (
-                  <div key={rem.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/30">
-                    <button 
-                      onClick={() => setActiveReminder(isOpen ? null : rem.id)}
-                      className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors focus:outline-none"
-                    >
-                      <span className={`font-bold text-sm ${isOpen ? 'text-primary dark:text-secondary' : 'text-slate-700 dark:text-slate-300'}`}>
-                        {rem.title}
-                      </span>
-                      <span className="text-slate-400 dark:text-slate-500">
-                        {isOpen ? <IconChevronUp /> : <IconChevronDown />}
-                      </span>
-                    </button>
-                    
-                    {isOpen && (
-                      <div className="p-4 pt-1 border-t border-slate-200 dark:border-slate-700 animate-fade-in bg-white dark:bg-slate-800/50">
-                        <ul className="list-disc list-outside ml-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                          {rem.items.map((item, i) => (
-                            <li key={i}>{item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
+      {/* Tabs */}
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
+        <div className="flex gap-1 bg-slate-200 dark:bg-slate-700 rounded-xl p-1 w-fit">
+          <button onClick={() => setActiveTab('new')}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='new'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
+            <IconBot /> {t.tab_new}
+          </button>
+          <button onClick={() => setActiveTab('history')}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='history'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
+            <IconHistory /> {t.tab_history}
+          </button>
         </div>
+      </div>
 
-        {/* 右側欄：互動式報告輸出區 (Interactive Report Output) */}
-        <div className="lg:col-span-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-[600px] lg:h-[calc(100vh-10rem)] overflow-hidden">
-          
-          <div className="bg-primary/5 dark:bg-secondary/5 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
-            <h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">3. Comprehensive Strategy Report</h2>
-            
-            {/* 新增：匯出按鈕區域 */}
-            <div className="flex items-center gap-3">
-              {workflowState === 'done' && (
-                <>
-                  <span className="hidden sm:flex bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs px-3 py-1.5 rounded-full font-bold items-center gap-1 shadow-sm"><IconCheck/> Analysis Complete</span>
-                  <button onClick={exportReport} className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white text-xs px-4 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-secondary dark:text-primary dark:hover:bg-secondary/90">
-                    <IconDownload /> {t.export_btn}
-                  </button>
-                </>
+      {/* Main Content */}
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6">
+        {activeTab === 'history' ? (
+          /* ===== History Tab ===== */
+          <div className="animate-fade-in">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <IconHistory />
+                <h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">{t.history_title}</h2>
+              </div>
+              <div className="flex gap-2 mb-6">
+                <div className="relative flex-1">
+                  <IconSearch />
+                  <input type="text" value={historySearch} onChange={e => setHistorySearch(e.target.value)}
+                    onKeyDown={e => e.key==='Enter' && loadHistory()}
+                    placeholder={t.history_search_ph}
+                    className="w-full pl-8 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none text-sm dark:text-white" />
+                </div>
+                <button onClick={loadHistory} className="px-4 py-2 bg-primary dark:bg-secondary text-white dark:text-primary rounded-xl text-sm font-bold hover:opacity-90">
+                  <IconSearch />
+                </button>
+              </div>
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-12 text-slate-400"><IconLoader /> <span className="ml-2">Loading...</span></div>
+              ) : historyList.length === 0 ? (
+                <p className="text-center text-slate-400 py-12">{t.history_empty}</p>
+              ) : (
+                <div className="space-y-3">
+                  {historyList.map(r => (
+                    <div key={r.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/30 dark:hover:border-secondary/30 transition-colors">
+                      <div>
+                        <p className="font-bold text-sm text-primary dark:text-secondary">{r.company}</p>
+                        <p className="text-xs text-slate-400 mt-1">{new Date(r.created_at+'Z').toLocaleString()} · {r.lang.toUpperCase()}</p>
+                      </div>
+                      <button onClick={() => loadReport(r.id)}
+                        className="px-4 py-2 text-xs font-bold bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary rounded-lg hover:bg-primary/20 dark:hover:bg-secondary/20 transition-colors">
+                        {t.history_load}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar">
-            
-            {/* 閒置狀態畫面 */}
-            {workflowState === 'idle' && (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 text-slate-300 dark:text-slate-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                <p className="font-medium text-lg">{lang === 'zh' ? '請在左側輸入企業名稱啟動分析' : 'Please input a company name on the left'}</p>
-                <p className="text-sm mt-2">{lang === 'zh' ? '各 Agent 將在此接力呈現報告結果' : 'Agent reports will be presented here sequentially'}</p>
-              </div>
-            )}
+        ) : (
+          /* ===== New Analysis Tab ===== */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+            {/* Left Column: Controls */}
+            <div className="lg:col-span-4 space-y-6 flex flex-col">
+              {/* Input Panel */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+                <h2 className="font-serif font-bold text-primary dark:text-secondary mb-4 text-lg">1. Target Company</h2>
+                <input type="text" value={company} onChange={e => setCompany(e.target.value)} disabled={isWorking}
+                  placeholder={t.ph_company}
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white" />
 
-            {/* 知識庫檢索結果提示 */}
-            {ragContext && workflowState !== 'idle' && workflowState !== 'error' && (
-              <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm">
-                <strong className="block mb-1">🔍 [Context Injected from Local Knowledge Base]:</strong> 
-                <span className="opacity-90">{ragContext}</span>
-              </div>
-            )}
-
-            {/* Agent 1 報告 */}
-            {reports.agent1 && (
-              <div className="mb-10 animate-fade-in">
-                <div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div>
-                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent1) }} />
-                <div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div>
-              </div>
-            )}
-
-            {/* Agent 2 報告 */}
-            {reports.agent2 && (
-              <div className="mb-10 animate-fade-in">
-                <div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div>
-                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent2) }} />
-                <div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div>
-              </div>
-            )}
-
-            {/* Agent 3 報告 */}
-            {reports.agent3 && (
-              <div className="mb-6 animate-fade-in">
-                <div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div>
-                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent3) }} />
-              </div>
-            )}
-
-            {/* 骨架屏載入動畫 (Skeleton Loader) */}
-            {(workflowState === 'agent1' || workflowState === 'agent2' || workflowState === 'agent3') && (
-              <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 animate-pulse shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <IconLoader className="text-primary dark:text-secondary" />
-                  <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
-                    {workflowState === 'agent1' ? '產業分析師正在彙整總體環境資料...' : 
-                     workflowState === 'agent2' ? '資源精算師正在評估核心能耐...' : 
-                     '策略長正在擬定最終藍圖...'}
-                  </span>
+                {/* Data Source Options */}
+                <div className="mt-4 mb-6 space-y-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.data_source_title}</h3>
+                  <label className="flex items-start gap-2 cursor-pointer group">
+                    <input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors">{t.opt_news}</span>
+                      {optNews && (
+                        <div className="mt-1 flex items-center gap-2 text-xs">
+                          <span className="text-slate-500">{t.news_years}</span>
+                          <select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))}
+                            className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">
+                            {[1,2,3,4,5].map(y => <option key={y} value={y}>{y} {t.news_years_suffix}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer group">
+                    <input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors leading-tight pt-0.5">{t.opt_ir}</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer group">
+                    <input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" />
+                    <div className="flex flex-col w-full">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>
+                      {optFile && (
+                        <div className="mt-2">
+                          <input type="file" multiple accept=".txt,.md,.csv,.json" onChange={handleFileUpload} disabled={isWorking}
+                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
+                          <p className="text-[10px] text-slate-400 mt-1">{t.file_support}</p>
+                        </div>
+                      )}
+                    </div>
+                  </label>
                 </div>
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3 mb-4"></div>
+
+                <button onClick={runWorkflow} disabled={isWorking}
+                  className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg">
+                  {isWorking ? <><IconLoader/> {t.processing}</> : t.start_btn}
+                </button>
+
+                {errorMsg && (
+                  <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 border border-red-200 dark:border-red-800/30">
+                    <IconAlert className="shrink-0 mt-0.5" /><p>{errorMsg}</p>
+                  </div>
+                )}
+                {savedMsg && (
+                  <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm rounded-lg flex items-center gap-2 border border-green-200 dark:border-green-800/30">
+                    <IconCheck /><p>{savedMsg}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Workflow Tracker */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden flex-1">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-secondary/5 rounded-bl-full pointer-events-none"></div>
+                <h2 className="font-serif font-bold text-primary dark:text-secondary mb-6 text-lg">2. Agentic Workflow</h2>
+                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 dark:before:via-slate-600 before:to-transparent">
+                  {/* Search step */}
+                  <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 text-slate-500 shadow shrink-0 z-10 transition-colors">
+                      <span className="text-sm font-bold">🔍</span>
+                    </div>
+                    <div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
+                      <p className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">Web Search + RAG</p>
+                      <div className="text-xs">
+                        {workflowState === 'search' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_search}</span>
+                          : workflowState === 'rag' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_rag}</span>
+                          : !['idle','error'].includes(workflowState) ? <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><IconCheck/> Retrieved</span>
+                          : <span className="text-slate-400">Waiting</span>}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Agent steps */}
+                  {[{id:'agent1',name:t.agent1,icon:'TP1'},{id:'agent2',name:t.agent2,icon:'TP2'},{id:'agent3',name:t.agent3,icon:'TP3'}].map(agt => (
+                    <div key={agt.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
+                      <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shadow shrink-0 z-10 transition-colors
+                        ${reports[agt.id]?'bg-primary dark:bg-secondary text-white dark:text-primary':'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
+                        <span className="text-xs font-bold">{agt.icon}</span>
+                      </div>
+                      <div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
+                        <p className="font-bold text-xs text-slate-700 dark:text-slate-300 mb-1 leading-tight">{agt.name}</p>
+                        <div className="text-xs">{getStatusUI(agt.id)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* TP0-TP3 Reference Accordion */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+                <div className="flex items-center gap-2 text-primary dark:text-secondary mb-4">
+                  <IconBookOpen />
+                  <h2 className="font-serif font-bold text-lg">{t.reminders_title}</h2>
+                </div>
                 <div className="space-y-3">
-                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
-                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div>
-                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div>
-                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+                  {t.reminders.map(rem => {
+                    const isOpen = activeReminder === rem.id;
+                    return (
+                      <div key={rem.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/30">
+                        <button onClick={() => setActiveReminder(isOpen?null:rem.id)}
+                          className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors focus:outline-none">
+                          <span className={`font-bold text-sm ${isOpen?'text-primary dark:text-secondary':'text-slate-700 dark:text-slate-300'}`}>{rem.title}</span>
+                          <span className="text-slate-400 dark:text-slate-500">{isOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
+                        </button>
+                        {isOpen && (
+                          <div className="p-4 pt-1 border-t border-slate-200 dark:border-slate-700 animate-fade-in bg-white dark:bg-slate-800/50">
+                            <ul className="list-disc list-outside ml-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                              {rem.items.map((item,i) => <li key={i}>{item}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
+            {/* Right Column: Report Output */}
+            <div className="lg:col-span-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-[600px] lg:h-[calc(100vh-14rem)] overflow-hidden">
+              <div className="bg-primary/5 dark:bg-secondary/5 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
+                <h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">3. Comprehensive Strategy Report</h2>
+                <div className="flex items-center gap-3">
+                  {viewingReport && (
+                    <span className="text-xs text-slate-400 hidden sm:block">
+                      {new Date(viewingReport.created_at+'Z').toLocaleString()}
+                    </span>
+                  )}
+                  {workflowState === 'done' && (
+                    <>
+                      <span className="hidden sm:flex bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs px-3 py-1.5 rounded-full font-bold items-center gap-1 shadow-sm"><IconCheck/> Complete</span>
+                      <button onClick={exportReport} className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white text-xs px-4 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-secondary dark:text-primary dark:hover:bg-secondary/90">
+                        <IconDownload /> {t.export_btn}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                {workflowState === 'idle' && (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 text-slate-300 dark:text-slate-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <p className="font-medium text-lg">{t.report_placeholder_title}</p>
+                    <p className="text-sm mt-2">{t.report_placeholder_desc}</p>
+                  </div>
+                )}
+                {ragContext && !['idle','error'].includes(workflowState) && (
+                  <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm">
+                    <strong className="block mb-1">🔍 [{t.rag_label}]:</strong>
+                    <span className="opacity-90 text-xs whitespace-pre-wrap">{ragContext.length > 800 ? ragContext.substring(0,800) + '...' : ragContext}</span>
+                  </div>
+                )}
+                {reports.agent1 && (
+                  <div className="mb-10 animate-fade-in">
+                    <div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div>
+                    <div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent1)}} />
+                    <div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div>
+                  </div>
+                )}
+                {reports.agent2 && (
+                  <div className="mb-10 animate-fade-in">
+                    <div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div>
+                    <div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent2)}} />
+                    <div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div>
+                  </div>
+                )}
+                {reports.agent3 && (
+                  <div className="mb-6 animate-fade-in">
+                    <div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div>
+                    <div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent3)}} />
+                  </div>
+                )}
+                {['search','rag','agent1','agent2','agent3','saving'].includes(workflowState) && (
+                  <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 animate-pulse shadow-sm">
+                    <div className="flex items-center gap-3 mb-4">
+                      <IconLoader className="text-primary dark:text-secondary" />
+                      <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                        {workflowState === 'search' ? t.status_search
+                          : workflowState === 'rag' ? t.status_rag
+                          : workflowState === 'agent1' ? t.skeleton_agent1
+                          : workflowState === 'agent2' ? t.skeleton_agent2
+                          : workflowState === 'agent3' ? t.skeleton_agent3
+                          : t.status_saving}
+                      </span>
+                    </div>
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3 mb-4"></div>
+                    <div className="space-y-3">
+                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* 頁尾 Footer */}
+      {/* Footer */}
       <footer className="bg-white dark:bg-[#0a0a0a] border-t border-slate-200 dark:border-slate-800 mt-12 py-10 shrink-0">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-          
           <div className="flex flex-col gap-3 max-w-md">
-            <div 
-              className="flex items-center gap-2 text-primary dark:text-secondary cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            >
-              <IconBot />
-              <span className="font-black text-2xl tracking-wider">{t.brand}</span>
+            <div className="flex items-center gap-2 text-primary dark:text-secondary cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => window.scrollTo({top:0,behavior:'smooth'})}>
+              <IconBot /><span className="font-black text-2xl tracking-wider">{t.brand}</span>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-              {t.footer_desc}
-            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{t.footer_desc}</p>
           </div>
-          
           <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-bold text-slate-600 dark:text-slate-300">
             <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_home}</a>
             <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_about}</a>
@@ -727,20 +894,16 @@ function App() {
             <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_privacy}</a>
           </div>
         </div>
-        
         <div className="max-w-7xl mx-auto px-6 mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
             <p className="font-medium bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{t.footer_version}</p>
             <p className="hidden md:block">|</p>
             <p>{t.footer_rights}</p>
           </div>
-          
           <div className="flex flex-col sm:flex-row items-center gap-4">
-            <p>Architect: <a href="https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo" target="_blank" rel="noreferrer" className="font-bold hover:text-primary dark:hover:text-secondary underline transition-colors">Prof. Shihmin Lo</a></p>
-            <button 
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
-              className="flex items-center gap-1 font-bold hover:text-primary dark:hover:text-secondary transition-colors bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-full shadow-sm sm:ml-2"
-            >
+            <p>{t.architect_label} <a href={t.architect_url} target="_blank" rel="noreferrer" className="font-bold hover:text-primary dark:hover:text-secondary underline transition-colors">{t.architect_name}</a></p>
+            <button onClick={() => window.scrollTo({top:0,behavior:'smooth'})}
+              className="flex items-center gap-1 font-bold hover:text-primary dark:hover:text-secondary transition-colors bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-full shadow-sm sm:ml-2">
               Top <IconArrowUp />
             </button>
           </div>
