@@ -63,7 +63,7 @@ tailwind.config = {
 const { useState, useEffect, useRef, useCallback } = React;
 
 /* ===== Worker API 設定 ===== */
-const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev/'; // ← 替換成你的 Worker URL
+const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev'; // ← 替換成你的 Worker URL
 
 const api = async (action, data = {}, token = '') => {
   const resp = await fetch(API_BASE + '/api', {
@@ -76,6 +76,42 @@ const api = async (action, data = {}, token = '') => {
     throw new Error(err.error || `HTTP ${resp.status}`);
   }
   return resp.json();
+};
+
+const apiSSE = (data, token, onEvent) => {
+  return new Promise((resolve, reject) => {
+    fetch(API_BASE + '/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'analyze', token, ...data }),
+    }).then(resp => {
+      if (!resp.ok) { reject(new Error('HTTP ' + resp.status)); return; }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result = null;
+      function pump() {
+        reader.read().then(({ done, value }) => {
+          if (done) { resolve(result); return; }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const evt = JSON.parse(line.slice(6));
+                if (evt.type === 'react_complete') result = evt;
+                if (evt.type === 'react_fatal') reject(new Error(evt.error));
+                if (evt.type !== 'stream_end') onEvent(evt);
+              } catch(e) {}
+            }
+          }
+          pump();
+        }).catch(reject);
+      }
+      pump();
+    }).catch(reject);
+  });
 };
 
 /* ===== Icons ===== */
@@ -154,7 +190,7 @@ const dict = {
     ],
     footer_desc: "致力於提供頂尖的國際企業策略分析與執行方案。",
     footer_rights: "© 2026 SMMC. 保留所有權利。",
-    footer_version: "Version 2.0.0 (2026.03)",
+    footer_version: "Version 2.1.0 (2026.04) — ReAct Edition",
     menu_home: "首頁", menu_about: "關於 SMMC", menu_contact: "聯絡我們", menu_privacy: "隱私權政策",
     architect_label: "Architect:", architect_name: "Prof. Shihmin Lo",
     architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
@@ -221,7 +257,7 @@ const dict = {
     ],
     footer_desc: "Dedicated to providing top-tier strategy analysis and deployment solutions for multinational corporations.",
     footer_rights: "© 2026 SMMC. All rights reserved.",
-    footer_version: "Version 2.0.0 (Mar 2026)",
+    footer_version: "Version 2.1.0 (Apr 2026) — ReAct Edition",
     menu_home: "Home", menu_about: "About SMMC", menu_contact: "Contact Us", menu_privacy: "Privacy Policy",
     architect_label: "Architect:", architect_name: "Prof. Shihmin Lo",
     architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
@@ -236,25 +272,7 @@ const dict = {
   }
 };
 
-/* ===== Agent System Prompts ===== */
-const getAgentPrompts = (company, lang, ragContext, optionsPrompt, prevReports) => {
-  const langStr = lang === 'zh' ? '繁體中文(台灣用語)' : 'English';
-  const noSimplified = lang === 'zh' ? '絕對不使用中國大陸的簡體中文用語(如：項目、數據庫、視頻、賦能等)，請使用台灣標準用語(如：專案、資料庫、影片、賦予能力等)。' : '';
-  return {
-    agent1: {
-      system: `你是一位資深的「總體經濟與產業分析師」。語言：${langStr}。${noSimplified}請根據課綱完成 TP0 與 TP1。輸出需結構化(使用 Markdown)。`,
-      user: `分析對象: ${company}。\n【內部參考資料(RAG)】: ${ragContext}\n【動態設定要求】: ${optionsPrompt}\n【任務要求】:\n1. TP0: 摘要公司歷史、願景與近年財務表現概況。\n2. TP1: 進行最關鍵的 PESTEL 總體環境分析(挑選最關鍵的2-3項即可)。\n3. TP1: 進行五力分析(Five Forces)與產業價值鏈定位。\n4. 結論: 歸納該公司的 4P (Position, Priority, Posture, Profit potential)。`
-    },
-    agent2: {
-      system: `你是一位資深的「企業資源與價值鏈精算師」。語言：${langStr}。${noSimplified}請接續前一階段分析師的報告，完成 TP2 分析。`,
-      user: `分析對象: ${company}。\n【Agent 1(產業分析師)報告節錄】: ${(prevReports.agent1||'').substring(0,1500)}...\n【任務要求】:\n1. TP2: 分析核心事業與產品線的營收流向。\n2. TP2: 拆解企業價值鏈(Corporate Value Chain)的關鍵活動。\n3. TP2: 找出3-4個關鍵資源(有形/無形)，並用 VRIN 架構評估其核心能耐。\n4. TP2: 指出其近期的「動態能力(Dynamic Capabilities)」。`
-    },
-    agent3: {
-      system: `你是一位頂尖的「集團策略長(CSO)」。語言：${langStr}。${noSimplified}請綜合前兩個階段的產出，完成最後的高階策略建議 (TP3)。`,
-      user: `分析對象: ${company}。\n【Agent 1 報告節錄】: ${(prevReports.agent1||'').substring(0,1000)}...\n【Agent 2 報告節錄】: ${(prevReports.agent2||'').substring(0,1000)}...\n【任務要求】:\n1. TP3: 分析其近年在「垂直整合(VI)」、「產品多角化(HD)」或「地理區域擴張(GE)」的集團策略行動與進入模式(併購、聯盟或自建)。\n2. TP3: 基於企業生命週期，針對未來創新與轉型，提出 2-3 點具體挑戰與高階策略建議。\n3. 需考量內外部利害關係人(如 ESG, Agency problem 等議題)。`
-    }
-  };
-};
+/* ===== (Agent prompts now handled server-side in Worker ReAct loop) ===== */
 
 /* ===== Login Screen ===== */
 function LoginScreen({ onLogin, lang, setLang }) {
@@ -343,6 +361,9 @@ function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [reports, setReports] = useState({ agent1:'', agent2:'', agent3:'' });
   const [savedMsg, setSavedMsg] = useState('');
+  const [reactLog, setReactLog] = useState([]);
+  const [traces, setTraces] = useState({ agent1: [], agent2: [], agent3: [] });
+  // ReAct SSE events log — managed by reactLog and traces states above
 
   // History state
   const [historyList, setHistoryList] = useState([]);
@@ -428,89 +449,131 @@ function App() {
 
   const isWorking = !['idle','done','error'].includes(workflowState);
 
-  /* ===== Main Workflow ===== */
+  /* ===== Main Workflow (SSE ReAct) ===== */
   const runWorkflow = async () => {
     if (!company.trim()) { setErrorMsg(t.err_empty); return; }
     setErrorMsg(''); setSavedMsg(''); setViewingReport(null);
     setReports({ agent1:'', agent2:'', agent3:'' });
-    const currentReports = { agent1:'', agent2:'', agent3:'' };
+    setReactLog([]);
+    setTraces({ agent1: [], agent2: [], agent3: [] });
+    const collectedReports = { agent1:'', agent2:'', agent3:'' };
+    const collectedTraces = { agent1: [], agent2: [], agent3: [] };
+
+    const addLog = (icon, msg) => setReactLog(prev => [...prev, { time: new Date().toLocaleTimeString(), icon, msg }]);
+
+    const handleEvent = (evt) => {
+      switch(evt.type) {
+        case 'react_thinking':
+          addLog('🧠', `${evt.agentId} — Round ${evt.round}/${evt.maxRounds} 思考中...`);
+          break;
+        case 'react_thought':
+          addLog('💭', `${evt.agentId} — ${evt.thought}`);
+          break;
+        case 'react_action':
+          const icons = { search:'🔍', lookup_kb:'📚', calculate:'🔢' };
+          addLog(icons[evt.action]||'🔧', `${evt.agentId} → ${evt.action}("${evt.input}")`);
+          break;
+        case 'react_observation':
+          addLog('📋', `${evt.agentId} ← ${evt.observation}`);
+          break;
+        case 'react_finish':
+          addLog('✅', `${evt.agentId} — Round ${evt.round} finish: ${evt.thought}`);
+          break;
+        case 'react_error':
+          addLog('⚠️', `${evt.agentId} — ${evt.error}`);
+          break;
+        case 'react_complete':
+          // handled separately
+          break;
+      }
+    };
 
     try {
-      // Phase 0: Web search (if options enabled)
+      // Phase 0: Web search
       if (optNews || optIR) {
         setWorkflowState('search');
+        addLog('🌐', lang==='zh'?`線上搜尋「${company}」資料中...`:`Searching "${company}" online...`);
         await api('search', { company, optNews, newsYears, optIR, lang }, authToken);
       }
 
       // Phase 1: RAG retrieve
       setWorkflowState('rag');
+      addLog('🔍', lang==='zh'?'檢索知識庫...':'Retrieving knowledge base...');
       const ragRes = await api('rag_retrieve', { company }, authToken);
-      let context = ragRes.context || (lang === 'zh'
-        ? '知識庫無相符資料，請依賴通用知識進行推論分析。'
-        : 'No data found in knowledge base. Rely on general knowledge for analysis.');
-
-      if (optFile && fileContents) {
-        context += `\n\n【使用者匯入外部資料】：\n${fileContents}`;
-      }
+      let context = ragRes.context || (lang==='zh'?'知識庫無相符資料。':'No data found in KB.');
+      if (optFile && fileContents) context += `\n\n【匯入資料】：\n${fileContents}`;
       setRagContext(context);
 
-      let optionsPrompt = '';
-      if (optNews) optionsPrompt += `\n- 請特別著重整合該企業過去 ${newsYears} 年內的最新網路新聞與市場動態。`;
-      if (optIR) optionsPrompt += `\n- 請著重分析該公司的官方網站與投資人關係 (IR) 公開資訊。`;
+      let optPrompt = '';
+      if (optNews) optPrompt += `\n- 著重整合過去 ${newsYears} 年新聞與市場動態。`;
+      if (optIR) optPrompt += `\n- 著重官方網站與 IR 公開資訊。`;
 
-      const prompts = getAgentPrompts(company, lang, context, optionsPrompt, currentReports);
+      const langStr = lang==='zh'?'繁體中文（台灣用語）':'English';
 
-      // Phase 2: Agent 1
+      // Phase 2: Agent 1 (ReAct SSE)
       setWorkflowState('agent1');
-      const r1 = await api('analyze', {
+      addLog('🚀', 'Agent 1 ReAct loop 啟動');
+      const r1 = await apiSSE({
         company, agentId: 'agent1',
-        systemPrompt: prompts.agent1.system,
-        userPrompt: prompts.agent1.user
-      }, authToken);
-      currentReports.agent1 = r1.content;
-      setReports(prev => ({ ...prev, agent1: r1.content }));
+        agentRole: '資深總體經濟與產業分析師',
+        taskPrompt: `分析對象: ${company}。\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
+        ragContext: context,
+      }, authToken, handleEvent);
+      if (r1) {
+        collectedReports.agent1 = r1.report;
+        collectedTraces.agent1 = r1.trace || [];
+        setReports(prev => ({...prev, agent1: r1.report}));
+        setTraces(prev => ({...prev, agent1: r1.trace || []}));
+      }
 
-      // Update prompts with agent1 result for chaining
-      const prompts2 = getAgentPrompts(company, lang, context, optionsPrompt, currentReports);
-
-      // Phase 3: Agent 2
+      // Phase 3: Agent 2 (ReAct SSE)
       setWorkflowState('agent2');
-      const r2 = await api('analyze', {
+      addLog('🚀', 'Agent 2 ReAct loop 啟動');
+      const r2 = await apiSSE({
         company, agentId: 'agent2',
-        systemPrompt: prompts2.agent2.system,
-        userPrompt: prompts2.agent2.user
-      }, authToken);
-      currentReports.agent2 = r2.content;
-      setReports(prev => ({ ...prev, agent2: r2.content }));
+        agentRole: '資深企業資源與價值鏈精算師',
+        taskPrompt: `分析對象: ${company}。\n【Agent 1 報告節錄】: ${(collectedReports.agent1||'').substring(0,1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
+        ragContext: context,
+      }, authToken, handleEvent);
+      if (r2) {
+        collectedReports.agent2 = r2.report;
+        collectedTraces.agent2 = r2.trace || [];
+        setReports(prev => ({...prev, agent2: r2.report}));
+        setTraces(prev => ({...prev, agent2: r2.trace || []}));
+      }
 
-      const prompts3 = getAgentPrompts(company, lang, context, optionsPrompt, currentReports);
-
-      // Phase 4: Agent 3
+      // Phase 4: Agent 3 (ReAct SSE)
       setWorkflowState('agent3');
-      const r3 = await api('analyze', {
+      addLog('🚀', 'Agent 3 ReAct loop 啟動');
+      const r3 = await apiSSE({
         company, agentId: 'agent3',
-        systemPrompt: prompts3.agent3.system,
-        userPrompt: prompts3.agent3.user
-      }, authToken);
-      currentReports.agent3 = r3.content;
-      setReports(prev => ({ ...prev, agent3: r3.content }));
+        agentRole: '頂尖集團策略長 (CSO)',
+        taskPrompt: `分析對象: ${company}。\n【Agent 1 節錄】: ${(collectedReports.agent1||'').substring(0,1000)}...\n【Agent 2 節錄】: ${(collectedReports.agent2||'').substring(0,1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
+        ragContext: context,
+      }, authToken, handleEvent);
+      if (r3) {
+        collectedReports.agent3 = r3.report;
+        collectedTraces.agent3 = r3.trace || [];
+        setReports(prev => ({...prev, agent3: r3.report}));
+        setTraces(prev => ({...prev, agent3: r3.trace || []}));
+      }
 
-      // Phase 5: Save report
+      // Phase 5: Save
       setWorkflowState('saving');
+      addLog('💾', lang==='zh'?'儲存報告至雲端...':'Saving report...');
       await api('save_report', {
         company, lang,
-        agent1: currentReports.agent1,
-        agent2: currentReports.agent2,
-        agent3: currentReports.agent3,
-        ragContext: context,
-        options: { optNews, newsYears, optIR, optFile }
+        agent1: collectedReports.agent1, agent2: collectedReports.agent2, agent3: collectedReports.agent3,
+        agent1Trace: collectedTraces.agent1, agent2Trace: collectedTraces.agent2, agent3Trace: collectedTraces.agent3,
+        ragContext: context, options: { optNews, newsYears, optIR, optFile }
       }, authToken);
       setSavedMsg(t.report_saved);
-
+      addLog('🎉', lang==='zh'?'全部完成！':'All done!');
       setWorkflowState('done');
     } catch (err) {
       console.error(err);
       setErrorMsg(t.err_api + ' ' + err.message);
+      addLog('❌', err.message);
       setWorkflowState('error');
     }
   };
@@ -850,24 +913,38 @@ function App() {
                   </div>
                 )}
                 {['search','rag','agent1','agent2','agent3','saving'].includes(workflowState) && (
-                  <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 animate-pulse shadow-sm">
-                    <div className="flex items-center gap-3 mb-4">
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 shadow-sm animate-fade-in">
+                    <div className="flex items-center gap-3 mb-3">
                       <IconLoader className="text-primary dark:text-secondary" />
-                      <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
-                        {workflowState === 'search' ? t.status_search
-                          : workflowState === 'rag' ? t.status_rag
-                          : workflowState === 'agent1' ? t.skeleton_agent1
-                          : workflowState === 'agent2' ? t.skeleton_agent2
-                          : workflowState === 'agent3' ? t.skeleton_agent3
-                          : t.status_saving}
+                      <span className="text-sm font-bold text-primary dark:text-secondary">
+                        ReAct Agent Live Trace
                       </span>
+                      <span className="text-xs text-slate-400 ml-auto">{reactLog.length} events</span>
                     </div>
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3 mb-4"></div>
-                    <div className="space-y-3">
-                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
-                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div>
-                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div>
-                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+                    <div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">
+                      {reactLog.length === 0 ? (
+                        <div className="flex items-center gap-2 text-slate-400 animate-pulse">
+                          <span>⏳</span><span>{workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : 'Initializing ReAct loop...'}</span>
+                        </div>
+                      ) : reactLog.slice(-20).map((ev, i) => (
+                        <div key={i} className={`flex items-start gap-2 py-1 px-2 rounded ${
+                          ev.icon === '🔍' || ev.icon === '📚' || ev.icon === '🔢' ? 'bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300' :
+                          ev.icon === '✅' || ev.icon === '🎉' ? 'bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300' :
+                          ev.icon === '❌' || ev.icon === '⚠️' ? 'bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400' :
+                          'text-slate-600 dark:text-slate-400'
+                        }`}>
+                          <span className="shrink-0">{ev.icon}</span>
+                          <span className="break-all leading-relaxed">
+                            <span className="text-slate-400 mr-1">[{ev.time}]</span>
+                            {ev.msg}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Skeleton bars */}
+                    <div className="mt-3 space-y-2 animate-pulse">
+                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div>
                     </div>
                   </div>
                 )}
