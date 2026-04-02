@@ -163,7 +163,7 @@ const dict = {
     tab_new: "新分析", tab_history: "歷史報告",
     news_years: "檢索範圍：過去",
     news_years_suffix: "年內",
-    file_support: "支援 .txt, .md 等純文字格式匯入",
+    file_support: "支援 PDF, Word, Excel, PPT, TXT, MD, CSV 等格式",
     data_source_title: "資料來源設定",
     reminders_title: "TP0~TP3 分析架構參考",
     reminders: [
@@ -230,7 +230,7 @@ const dict = {
     tab_new: "New Analysis", tab_history: "Report History",
     news_years: "Search range: past",
     news_years_suffix: "years",
-    file_support: "Supports .txt, .md and other plain text formats",
+    file_support: "Supports PDF, Word, Excel, PPT, TXT, MD, CSV",
     data_source_title: "Data Source Settings",
     reminders_title: "TP0~TP3 Framework Reference",
     reminders: [
@@ -418,18 +418,22 @@ function App() {
     } catch (err) { console.error(err); }
   };
 
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
-    if (!files.length) { setFileContents(''); return; }
-    let allText = ''; let processed = 0;
-    files.forEach(file => {
+    if (!files.length) { setUploadedFiles([]); setFileContents(''); return; }
+    const filePromises = files.map(file => new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        allText += `\n--- 匯入文件: ${file.name} ---\n${ev.target.result}\n`;
-        processed++;
-        if (processed === files.length) setFileContents(allText);
+        const base64 = ev.target.result.split(',')[1]; // strip data:...;base64, prefix
+        resolve({ fileName: file.name, fileType: file.type, fileBase64: base64 });
       };
-      reader.readAsText(file);
+      reader.readAsDataURL(file);
+    }));
+    Promise.all(filePromises).then(results => {
+      setUploadedFiles(results);
+      setFileContents(results.map(f => f.fileName).join(', '));
     });
   };
 
@@ -496,12 +500,24 @@ function App() {
         await api('search', { company, optNews, newsYears, optIR, lang }, authToken);
       }
 
+      // Phase 0.5: Upload files (if any)
+      if (optFile && uploadedFiles.length > 0) {
+        addLog('📎', lang==='zh'?`上傳 ${uploadedFiles.length} 個檔案...`:`Uploading ${uploadedFiles.length} files...`);
+        for (const f of uploadedFiles) {
+          try {
+            await api('file_upload', { company, fileName: f.fileName, fileType: f.fileType, fileBase64: f.fileBase64 }, authToken);
+            addLog('✅', `${f.fileName} ${lang==='zh'?'解析完成':'parsed'}`);
+          } catch (err) {
+            addLog('⚠️', `${f.fileName} ${lang==='zh'?'解析失敗':'failed'}: ${err.message}`);
+          }
+        }
+      }
+
       // Phase 1: RAG retrieve
       setWorkflowState('rag');
       addLog('🔍', lang==='zh'?'檢索知識庫...':'Retrieving knowledge base...');
       const ragRes = await api('rag_retrieve', { company }, authToken);
       let context = ragRes.context || (lang==='zh'?'知識庫無相符資料。':'No data found in KB.');
-      if (optFile && fileContents) context += `\n\n【匯入資料】：\n${fileContents}`;
       setRagContext(context);
 
       let optPrompt = '';
@@ -766,7 +782,7 @@ function App() {
                       <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>
                       {optFile && (
                         <div className="mt-2">
-                          <input type="file" multiple accept=".txt,.md,.csv,.json" onChange={handleFileUpload} disabled={isWorking}
+                          <input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking}
                             className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
                           <p className="text-[10px] text-slate-400 mt-1">{t.file_support}</p>
                         </div>
