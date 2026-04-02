@@ -63,7 +63,7 @@ tailwind.config = {
 const { useState, useEffect, useRef, useCallback } = React;
 
 /* ===== Worker API 設定 ===== */
-const API_BASE = 'https://smmc-strategy-api.YOUR_ACCOUNT.workers.dev'; // ← 替換成你的 Worker URL
+const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev'; // ← 替換成你的 Worker URL
 
 const api = async (action, data = {}, token = '') => {
   const resp = await fetch(API_BASE + '/api', {
