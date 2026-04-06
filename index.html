@@ -65,53 +65,79 @@ const { useState, useEffect, useRef, useCallback } = React;
 /* ===== Worker API 設定 ===== */
 const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev'; // ← 替換成你的 Worker URL
 
+const friendlyHttpError = async (resp) => {
+  let payload = null;
+  try {
+    payload = await resp.clone().json();
+  } catch (_) {
+    try {
+      payload = { error: await resp.text() };
+    } catch (_) {
+      payload = null;
+    }
+  }
+
+  const raw = payload?.error || `HTTP ${resp.status}`;
+
+  if (resp.status === 429) {
+    return new Error(
+      raw.includes('Gemini')
+        ? 'Gemini 配額或速率限制已超出（429）。系統目前已採串行執行 Agent，但可用額度不足，請稍後再試。'
+        : '請求過多或今日使用額度已達上限（429），請稍後再試。'
+    );
+  }
+
+  if (resp.status === 401) return new Error('Token 無效或已過期，請重新登入。');
+  if (resp.status === 403) return new Error('目前帳號沒有此操作權限。');
+
+  return new Error(raw || `HTTP ${resp.status}`);
+};
+
 const api = async (action, data = {}, token = '') => {
   const resp = await fetch(API_BASE + '/api', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, token, ...data }),
   });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-    throw new Error(err.error || `HTTP ${resp.status}`);
-  }
+  if (!resp.ok) throw await friendlyHttpError(resp);
   return resp.json();
 };
 
-const apiSSE = (data, token, onEvent) => {
-  return new Promise((resolve, reject) => {
-    fetch(API_BASE + '/api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'analyze', token, ...data }),
-    }).then(resp => {
-      if (!resp.ok) { reject(new Error('HTTP ' + resp.status)); return; }
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let result = null;
-      function pump() {
-        reader.read().then(({ done, value }) => {
-          if (done) { resolve(result); return; }
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const evt = JSON.parse(line.slice(6));
-                if (evt.type === 'react_complete') result = evt;
-                if (evt.type === 'react_fatal') reject(new Error(evt.error));
-                if (evt.type !== 'stream_end') onEvent(evt);
-              } catch(e) {}
-            }
-          }
-          pump();
-        }).catch(reject);
-      }
-      pump();
-    }).catch(reject);
+const apiSSE = async (data, token, onEvent) => {
+  const resp = await fetch(API_BASE + '/api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'analyze', token, ...data }),
   });
+
+  if (!resp.ok) throw await friendlyHttpError(resp);
+  if (!resp.body) throw new Error('伺服器未回傳串流資料。');
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return result;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const evt = JSON.parse(line.slice(6));
+        if (evt.type === 'react_complete') result = evt;
+        if (evt.type === 'react_fatal') throw new Error(evt.error || '分析流程中斷。');
+        if (evt.type !== 'stream_end') onEvent(evt);
+      } catch (e) {
+        if (e instanceof Error && e.message !== 'Unexpected end of JSON input') throw e;
+      }
+    }
+  }
 };
 
 /* ===== Icons ===== */
@@ -819,7 +845,7 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
 
       // Phase 2: Agent 1 (ReAct SSE)
       setWorkflowState('agent1');
-      addLog('🚀', 'Agent 1 ReAct loop 啟動');
+      addLog('🚀', 'Agent 1 ReAct loop 啟動（前端為串行執行）');
       const r1 = await apiSSE({
         company, agentId: 'agent1',
         agentRole: '資深總體經濟與產業分析師',
@@ -835,7 +861,7 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
 
       // Phase 3: Agent 2 (ReAct SSE)
       setWorkflowState('agent2');
-      addLog('🚀', 'Agent 2 ReAct loop 啟動');
+      addLog('🚀', 'Agent 2 ReAct loop 啟動（等待 Agent 1 完成後再執行）');
       const r2 = await apiSSE({
         company, agentId: 'agent2',
         agentRole: '資深企業資源與價值鏈精算師',
@@ -851,7 +877,7 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
 
       // Phase 4: Agent 3 (ReAct SSE)
       setWorkflowState('agent3');
-      addLog('🚀', 'Agent 3 ReAct loop 啟動');
+      addLog('🚀', 'Agent 3 ReAct loop 啟動（等待 Agent 2 完成後再執行）');
       const r3 = await apiSSE({
         company, agentId: 'agent3',
         agentRole: '頂尖集團策略長 (CSO)',
@@ -880,8 +906,9 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
       setWorkflowState('done');
     } catch (err) {
       console.error(err);
-      setErrorMsg(t.err_api + ' ' + err.message);
-      addLog('❌', err.message);
+      const msg = err?.message || t.err_api;
+      setErrorMsg(msg.startsWith(t.err_api) ? msg : `${t.err_api} ${msg}`);
+      addLog('❌', msg);
       setWorkflowState('error');
     }
   };
