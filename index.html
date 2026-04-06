@@ -590,18 +590,20 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
 
   const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files);
+    const SUPPORTED_EXT = /\.(txt|md|csv|json|pdf|docx?|xlsx?|pptx?)$/i;
+    const allFiles = Array.from(e.target.files);
+    const files = allFiles.filter(f => SUPPORTED_EXT.test(f.name));
     if (!files.length) { setUploadedFiles([]); setFileContents(''); return; }
     const filePromises = files.map(file => new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const base64 = ev.target.result.split(',')[1]; // strip data:...;base64, prefix
-        resolve({ fileName: file.name, fileType: file.type, fileBase64: base64 });
+        const base64 = ev.target.result.split(',')[1];
+        resolve({ fileName: file.name, fileType: file.type || 'application/octet-stream', fileBase64: base64 });
       };
       reader.readAsDataURL(file);
     }));
     Promise.all(filePromises).then(results => {
-      setUploadedFiles(results);
+      setUploadedFiles(prev => [...prev, ...results]);
       setFileContents(results.map(f => f.fileName).join(', '));
     });
   };
@@ -623,85 +625,112 @@ function App() {
   const exportPDF = () => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-
-    const renderMd = (md) => marked.parse(md || '');
+    const renderMd = (md) => marked.parse((md || '')
+      .replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"'));
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Inter:wght@400;500;600&display=swap');
-@page { size: A4; margin: 2cm 2.5cm; }
-@page:first { margin: 0; }
-body { font-family: 'Inter', sans-serif; font-size: 12px; color: #333; line-height: 1.7; }
-.cover { background: #004030; color: #fff; min-height: 100vh; padding: 60px 50px 50px; display: flex; flex-direction: column; justify-content: flex-end; page-break-after: always; position: relative; }
+@page { size: A4; margin: 2cm 2.5cm 2.5cm; @bottom-center { content: counter(page); font-size: 9px; color: #aaa; } }
+@page:first { margin: 0; @bottom-center { content: none; } }
+body { font-family: 'Inter', sans-serif; font-size: 12px; color: #333; line-height: 1.7; counter-reset: page; }
+
+/* Cover */
+.cover { background: #004030; color: #fff; width: 100%; min-height: 100vh; padding: 60px 50px 50px; display: flex; flex-direction: column; justify-content: flex-end; page-break-after: always; position: relative; box-sizing: border-box; }
 .cover .logo { position: absolute; top: 40px; right: 50px; font-family: 'Merriweather', serif; font-size: 32px; font-weight: 900; color: #D8C3A5; letter-spacing: 4px; }
-.cover .tag { display: inline-block; border: 1px solid #D8C3A5; color: #D8C3A5; font-size: 11px; padding: 3px 12px; border-radius: 4px; margin-bottom: 16px; letter-spacing: 1.5px; }
+.cover .tag { display: inline-block; border: 1px solid #D8C3A5; color: #D8C3A5; font-size: 11px; padding: 3px 12px; border-radius: 4px; margin-bottom: 16px; letter-spacing: 1.5px; text-transform: uppercase; }
 .cover h1 { font-family: 'Merriweather', serif; font-size: 28px; font-weight: 700; margin: 0 0 8px; line-height: 1.3; }
-.cover h2 { font-size: 16px; font-weight: 400; color: #D8C3A5; margin: 0 0 28px; }
+.cover h2 { font-size: 16px; font-weight: 400; color: #D8C3A5; margin: 0 0 28px; opacity: .85; }
 .cover .meta { font-size: 12px; color: rgba(255,255,255,.6); line-height: 2; }
 .cover .meta b { color: #D8C3A5; font-weight: 500; }
+
+/* TOC */
 .toc { page-break-after: always; padding: 20px 0; }
-.toc h3 { font-family: 'Merriweather', serif; font-size: 18px; font-weight: 700; color: #004030; border-bottom: 2px solid #D8C3A5; padding-bottom: 8px; margin-bottom: 16px; }
-.toc-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 0.5px solid #eee; font-size: 13px; }
+.toc h3 { font-family: 'Merriweather', serif; font-size: 18px; font-weight: 700; color: #004030; border-bottom: 2px solid #D8C3A5; padding-bottom: 8px; margin: 0 0 16px; }
+.toc-item { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 0.5px solid #e8e8e4; }
+.toc-item .num { color: #004030; font-weight: 600; min-width: 28px; font-size: 13px; }
+.toc-item .title { flex: 1; font-size: 13px; color: #333; }
+.toc-sub { padding: 4px 0 4px 28px; font-size: 11px; color: #888; border-bottom: none; }
+
+/* Agent sections */
 .agent-section { page-break-before: always; }
-.agent-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 14px; border-radius: 20px; margin-bottom: 14px; }
+.agent-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 5px 16px; border-radius: 20px; margin-bottom: 16px; }
 .a1 { background: #dbeafe; color: #1e40af; }
 .a2 { background: #ede9fe; color: #5b21b6; }
 .a3 { background: rgba(0,64,48,.12); color: #004030; }
-h1, h2, h3 { font-family: 'Merriweather', serif; color: #004030; }
+
+/* Typography */
+h1, h2, h3 { font-family: 'Merriweather', serif; color: #004030; page-break-after: avoid; }
 h1 { font-size: 20px; margin: 24px 0 10px; }
 h2 { font-size: 16px; margin: 20px 0 8px; }
 h3 { font-size: 14px; margin: 16px 0 6px; }
 h4 { font-size: 13px; font-weight: 600; color: #004030; margin: 12px 0 6px; }
+h5 { font-size: 12px; font-weight: 600; color: #555; margin: 10px 0 4px; }
 p { margin: 0 0 8px; }
 ul, ol { margin: 0 0 10px; padding-left: 20px; }
 li { margin-bottom: 3px; }
-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11px; }
-th { background: #004030; color: #D8C3A5; padding: 6px 10px; text-align: left; font-weight: 500; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11px; page-break-inside: avoid; }
+th { background: #004030; color: #D8C3A5; padding: 7px 10px; text-align: left; font-weight: 500; font-size: 10px; }
 td { padding: 6px 10px; border-bottom: 0.5px solid #e8e8e4; }
+tr:nth-child(even) td { background: #fafaf8; }
+
+/* Special blocks */
 strong { color: #004030; }
-blockquote { background: #f8f6f0; border-left: 3px solid #D8C3A5; padding: 10px 14px; margin: 12px 0; font-size: 12px; color: #555; }
-.footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 8px 2.5cm; font-size: 9px; color: #aaa; border-top: 0.5px solid #eee; }
-.footer .brand { color: #004030; font-weight: 600; }
+blockquote { background: #f8f6f0; border-left: 3px solid #D8C3A5; padding: 10px 14px; margin: 12px 0; font-size: 12px; color: #555; border-radius: 0; page-break-inside: avoid; }
+code { background: #f1f1ee; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
+
+/* Footer on every page */
+.page-footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 8px 2.5cm; font-size: 9px; color: #bbb; border-top: 0.5px solid #eee; }
+.page-footer .brand { color: #004030; font-weight: 600; }
 </style></head><body>
 
 <div class="cover">
   <div class="logo">SMMC</div>
-  <div class="tag">AI STRATEGY REPORT</div>
+  <div class="tag">AI Strategy Report</div>
   <h1>${company}</h1>
   <h2>Enterprise Strategy Comprehensive Analysis Report</h2>
   <div class="meta">
     <b>Course</b> Strategic Management of Multinational Corporations (SMMC-EMI)<br>
-    <b>Framework</b> TP0 Background + TP1 Industry + TP2 Resources + TP3 Corporate Strategy<br>
+    <b>Framework</b> TP0 Background &bull; TP1 Industry &bull; TP2 Resources &bull; TP3 Corporate Strategy<br>
     <b>Generated</b> ${dateStr}<br>
-    <b>Architect</b> Prof. Shihmin Lo, Ph.D. — Dept. of IBS, National Chi Nan University
+    <b>Powered by</b> SMMC AI Strategy Workstation v2.1 (ReAct Agentic)<br>
+    <b>Architect</b> Prof. Shihmin Lo, Ph.D. &mdash; Dept. of International Business Studies, National Chi Nan University
   </div>
 </div>
 
 <div class="toc">
-  <h3>Table of Contents</h3>
-  <div class="toc-item"><span>1. TP0 — Company Background and Overview</span></div>
-  <div class="toc-item"><span>2. TP1 — Macro Environment and Industry Analysis</span></div>
-  <div class="toc-item"><span>3. TP2 — Resources and Capabilities Analysis</span></div>
-  <div class="toc-item"><span>4. TP3 — Corporate Strategy and Future Development</span></div>
+  <h3>Table of contents</h3>
+  <div class="toc-item"><span class="num">1</span><span class="title">TP0 &mdash; Company background and overview</span></div>
+  <div class="toc-sub">1.1 Latest news &bull; 1.2 History, vision, mission &bull; 1.3 Organization &bull; 1.4 Business portfolio &bull; 1.5 Financial performance</div>
+  <div class="toc-item"><span class="num">2</span><span class="title">TP1 &mdash; Macro environment and industry analysis</span></div>
+  <div class="toc-sub">2.1 PESTEL &bull; 2.2 Industry value chain &bull; 2.3 Life cycle &bull; 2.4 Five forces &bull; 2.5 Competitor analysis &bull; 2.6 Competitive dynamics &bull; 2.7 4P summary</div>
+  <div class="toc-item"><span class="num">3</span><span class="title">TP2 &mdash; Resources and capabilities analysis</span></div>
+  <div class="toc-sub">3.1 Organization design &bull; 3.2 Value chain &bull; 3.3 Key resources &bull; 3.4 VRIN assessment &bull; 3.5 Core competencies &bull; 3.6 Dynamic capabilities</div>
+  <div class="toc-item"><span class="num">4</span><span class="title">TP3 &mdash; Corporate strategy and future development</span></div>
+  <div class="toc-sub">4.1 Vertical integration &bull; 4.2 Product diversification &bull; 4.3 Geographic expansion &bull; 4.4 Future challenges and suggestions</div>
 </div>
 
 <div class="agent-section">
-  <div class="agent-badge a1">Agent 1: Macro &amp; Industry Analyst (TP0-TP1)</div>
+  <div class="agent-badge a1">Agent 1: Macro &amp; Industry Analyst (TP0&ndash;TP1)</div>
   ${renderMd(reports.agent1)}
 </div>
 
 <div class="agent-section">
-  <div class="agent-badge a2">Agent 2: Resources &amp; Capabilities (TP2)</div>
+  <div class="agent-badge a2">Agent 2: Resources &amp; Capabilities Analyst (TP2)</div>
   ${renderMd(reports.agent2)}
 </div>
 
 <div class="agent-section">
-  <div class="agent-badge a3">Agent 3: Corporate Strategy &amp; Future (TP3)</div>
+  <div class="agent-badge a3">Agent 3: Chief Strategy Officer (TP3)</div>
   ${renderMd(reports.agent3)}
 </div>
 
-<div class="footer">
-  <span class="brand">SMMC AI Strategy Workstation v2.1</span>
+<div class="page-footer">
+  <span class="brand">SMMC AI Strategy Workstation</span>
+  <span>${company} &mdash; ${dateStr}</span>
   <span>Architect: Prof. Shihmin Lo</span>
 </div>
 
@@ -710,7 +739,7 @@ blockquote { background: #f8f6f0; border-left: 3px solid #D8C3A5; padding: 10px 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const printWin = window.open(url, '_blank');
-    printWin.onload = () => { setTimeout(() => { printWin.print(); }, 500); };
+    printWin.onload = () => { setTimeout(() => { printWin.print(); }, 800); };
   };
 
   const isWorking = !['idle','done','error'].includes(workflowState);
@@ -1058,10 +1087,25 @@ blockquote { background: #f8f6f0; border-left: 3px solid #D8C3A5; padding: 10px 
                     <div className="flex flex-col w-full">
                       <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>
                       {optFile && (
-                        <div className="mt-2">
-                          <input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking}
-                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
-                          <p className="text-[10px] text-slate-400 mt-1">{t.file_support}</p>
+                        <div className="mt-2 space-y-2">
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'選擇檔案':'Select files'}</label>
+                              <input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking}
+                                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
+                            </div>
+                            <div className="flex-1">
+                              <label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'或選擇整個資料夾':'Or select a folder'}</label>
+                              <input type="file" webkitdirectory="true" directory="" onChange={handleFileUpload} disabled={isWorking}
+                                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
+                            </div>
+                          </div>
+                          {uploadedFiles.length > 0 && (
+                            <div className="text-[10px] text-green-600 dark:text-green-400">
+                              {lang==='zh'?`已選擇 ${uploadedFiles.length} 個檔案`:`${uploadedFiles.length} files selected`}: {uploadedFiles.map(f=>f.fileName).slice(0,5).join(', ')}{uploadedFiles.length>5?'...':''}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-slate-400">{t.file_support}</p>
                         </div>
                       )}
                     </div>
