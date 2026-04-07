@@ -5,18 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>AI 企業策略協同工作站 — SMMC</title>
 
-<!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
-
-<!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-<!-- React & Babel -->
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-<!-- Marked for Markdown Rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
@@ -60,38 +53,17 @@ tailwind.config = {
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect } = React;
+const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev';
 
-/* ===== Worker API 設定 ===== */
-const API_BASE = 'https://smmc-strategy-api.smlo.workers.dev'; // ← 替換成你的 Worker URL
-
-const friendlyHttpError = async (resp) => {
-  let payload = null;
-  try {
-    payload = await resp.clone().json();
-  } catch (_) {
-    try {
-      payload = { error: await resp.text() };
-    } catch (_) {
-      payload = null;
-    }
-  }
-
-  const raw = payload?.error || `HTTP ${resp.status}`;
-
-  if (resp.status === 429) {
-    return new Error(
-      raw.includes('Gemini')
-        ? 'Gemini 配額或速率限制已超出（429）。系統目前已採串行執行 Agent，但可用額度不足，請稍後再試。'
-        : '請求過多或今日使用額度已達上限（429），請稍後再試。'
-    );
-  }
-
-  if (resp.status === 401) return new Error('Token 無效或已過期，請重新登入。');
-  if (resp.status === 403) return new Error('目前帳號沒有此操作權限。');
-
-  return new Error(raw || `HTTP ${resp.status}`);
-};
+function friendlyHttpError(status, payload = {}) {
+  const msg = payload?.error || payload?.message || '';
+  if (status === 401) return '登入驗證失敗（401）。請重新確認 Token。';
+  if (status === 403) return '你沒有執行此操作的權限（403）。';
+  if (status === 429) return msg || '請求過多或 Gemini 配額不足（429）。請稍後再試，或縮小檢索範圍。';
+  if (status >= 500) return msg || `伺服器錯誤（${status}）。`;
+  return msg || `HTTP ${status}`;
+}
 
 const api = async (action, data = {}, token = '') => {
   const resp = await fetch(API_BASE + '/api', {
@@ -99,8 +71,14 @@ const api = async (action, data = {}, token = '') => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, token, ...data }),
   });
-  if (!resp.ok) throw await friendlyHttpError(resp);
-  return resp.json();
+
+  let payload = null;
+  try { payload = await resp.json(); } catch {}
+
+  if (!resp.ok) {
+    throw new Error(friendlyHttpError(resp.status, payload || {}));
+  }
+  return payload;
 };
 
 const apiSSE = async (data, token, onEvent) => {
@@ -110,8 +88,11 @@ const apiSSE = async (data, token, onEvent) => {
     body: JSON.stringify({ action: 'analyze', token, ...data }),
   });
 
-  if (!resp.ok) throw await friendlyHttpError(resp);
-  if (!resp.body) throw new Error('伺服器未回傳串流資料。');
+  if (!resp.ok) {
+    let payload = null;
+    try { payload = await resp.json(); } catch {}
+    throw new Error(friendlyHttpError(resp.status, payload || {}));
+  }
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
@@ -131,16 +112,15 @@ const apiSSE = async (data, token, onEvent) => {
       try {
         const evt = JSON.parse(line.slice(6));
         if (evt.type === 'react_complete') result = evt;
-        if (evt.type === 'react_fatal') throw new Error(evt.error || '分析流程中斷。');
+        if (evt.type === 'react_fatal') throw new Error(evt.error || 'Analyze failed');
         if (evt.type !== 'stream_end') onEvent(evt);
-      } catch (e) {
-        if (e instanceof Error && e.message !== 'Unexpected end of JSON input') throw e;
+      } catch (err) {
+        if (err instanceof Error) throw err;
       }
     }
   }
 };
 
-/* ===== Icons ===== */
 const IconBot = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>;
 const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const IconLoader = () => <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>;
@@ -151,7 +131,6 @@ const IconDownload = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" he
 const IconLink = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>;
 const IconMenu = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>;
 const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
-const IconArrowUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>;
 const IconChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
 const IconChevronUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>;
 const IconBookOpen = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>;
@@ -160,147 +139,94 @@ const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height
 const IconLogOut = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
 const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
 
-/* ===== 雙語字典 ===== */
 const dict = {
   zh: {
-    brand: "SMMC",
-    title: "國際企業策略研究與執行", subtitle: "AI 協同工作站",
-    title_en_sub: "Strategy Research and Deployment for MNCs",
-    smmc_hub: "分析 TP0-TP3 基礎知識與技能，乃通過 SMMC 雙語互動學習 Hub",
-    start_btn: "啟動 Agentic 分析",
-    ph_company: "請輸入企業名稱 (例: 台積電, 捷安特...)",
-    opt_news: "自動蒐集網路新聞 (即時檢索)", opt_ir: "深度檢索官網 / 投資人關係 (IR)",
-    opt_file: "連接 Database / 匯入多元文件",
-    export_btn: "匯出分析報告 (.md)",
-    agent1: "Agent 1: 產業與環境分析師 (TP0-TP1)",
-    agent2: "Agent 2: 資源與能耐精算師 (TP2)",
-    agent3: "Agent 3: 集團策略長 (TP3)",
-    status_idle: "等待指示", status_search: "🔍 線上搜尋企業資料...",
-    status_rag: "🔍 檢索企業知識庫...", status_thinking: "🧠 思考與撰寫中...",
-    status_done: "✅ 完成", status_saving: "💾 儲存報告...",
-    err_empty: "請輸入企業名稱", err_api: "發生錯誤，請稍後再試。",
-    login_title: "Token 驗證", login_ph: "請輸入存取 Token",
-    login_btn: "驗證登入", login_err: "Token 錯誤，請重試",
-    login_hint: "請向授課教師取得存取 Token",
-    logout: "登出",
-    history_title: "歷史報告", history_empty: "尚無歷史報告",
-    history_load: "載入報告", history_search_ph: "搜尋企業名稱...",
-    history_back: "← 返回新分析",
-    tab_new: "新分析", tab_history: "歷史報告",
-    news_years: "檢索範圍：過去",
-    news_years_suffix: "年內",
-    file_support: "支援 PDF, Word, Excel, PPT, TXT, MD, CSV 等格式",
-    data_source_title: "資料來源設定",
-    reminders_title: "TP0~TP3 分析架構參考",
+    brand: 'SMMC',
+    title: '國際企業策略研究與執行', subtitle: 'AI 協同工作站',
+    title_en_sub: 'Strategy Research and Deployment for MNCs',
+    smmc_hub: '分析 TP0-TP3 基礎知識與技能，乃通過 SMMC 雙語互動學習 Hub',
+    start_btn: '啟動 Single-Pass 分析',
+    ph_company: '請輸入企業名稱 (例: 台積電, 捷安特...)',
+    opt_news: '自動蒐集網路新聞 (即時檢索)', opt_ir: '深度檢索官網 / 投資人關係 (IR)',
+    opt_file: '連接 Database / 匯入多元文件',
+    export_btn: '匯出分析報告 (.md)',
+    agent1: 'Agent 1: 產業與環境分析師 (TP0-TP1)',
+    agent2: 'Agent 2: 資源與能耐精算師 (TP2)',
+    agent3: 'Agent 3: 集團策略長 (TP3)',
+    status_idle: '等待指示', status_search: '🔍 線上搜尋企業資料...',
+    status_rag: '🔍 檢索企業知識庫...', status_thinking: '🧠 Single-Pass 生成中...',
+    status_done: '✅ 完成', status_saving: '💾 儲存報告...',
+    err_empty: '請輸入企業名稱', err_api: '發生錯誤，請稍後再試。',
+    login_title: 'Token 驗證', login_ph: '請輸入存取 Token',
+    login_btn: '驗證登入', login_err: 'Token 錯誤，請重試',
+    login_hint: '請向授課教師取得存取 Token',
+    logout: '登出', history_title: '歷史報告', history_empty: '尚無歷史報告',
+    history_load: '載入報告', history_search_ph: '搜尋企業名稱...',
+    tab_new: '新分析', tab_history: '歷史報告',
+    news_years: '檢索範圍：過去', news_years_suffix: '年內',
+    file_support: '支援 PDF, Word, Excel, PPT, TXT, MD, CSV 等格式',
+    data_source_title: '資料來源設定',
+    reminders_title: 'TP0~TP3 分析架構參考',
+    footer_version: 'Version 2.2.0 (2026.04) — Single-Pass Edition',
+    report_saved: '報告已儲存至雲端資料庫', processing: '協同處理中...',
+    report_placeholder_title: '請在左側輸入企業名稱啟動分析',
+    report_placeholder_desc: '各 Agent 將在此依序呈現 single-pass 報告結果',
+    rag_label: 'Context Injected from Knowledge Base',
     reminders: [
       { id:'tp0', title:'TP0: 企業背景與概況', items:[
-        "定義企業的基本面貌與發展軌跡，包含創立背景、核心願景 (Vision) 與使命 (Mission)。",
-        "檢視近三到五年的財務表現概況（如營收規模、毛利率、EPS 等），以確立後續策略分析的基準點與企業目前的生命週期階段。"
+        '定義企業的基本面貌與發展軌跡，包含創立背景、核心願景 (Vision) 與使命 (Mission)。',
+        '檢視近三到五年的財務表現概況（如營收規模、毛利率、EPS 等），以確立後續策略分析的基準點與企業目前的生命週期階段。'
       ]},
       { id:'tp1', title:'TP1: 總體環境與產業分析', items:[
-        "PESTEL 分析：由外而內評估政治 (Political)、經濟 (Economic)、社會 (Social)、科技 (Technological)、環境 (Environmental) 與法律 (Legal) 等總體環境因素的潛在衝擊。",
-        "五力分析 (Five Forces)：深度分析產業內的競爭程度、潛在進入者的威脅、替代品的威脅，以及供應商與買方的議價能力。",
-        "產業價值鏈與生命週期定位：釐清企業在整體產業鏈（上、中、下游）中所扮演的角色、利潤池分佈，以及評估產業與企業所處的生命週期演化階段（如導入、成長、成熟或衰退期）。",
-        "4P 歸納：總結企業目前的 Position (市場定位), Priority (優先發展事項), Posture (競爭姿態), 與 Profit potential (獲利潛力)。"
+        'PESTEL 分析、五力分析、產業價值鏈與生命週期定位。',
+        '以 4P 歸納企業目前的 Position、Priority、Posture 與 Profit potential。'
       ]},
       { id:'tp2', title:'TP2: 資源與能耐精算', items:[
-        "企業價值鏈 (Corporate Value Chain)：拆解企業內部的主要活動（進料後勤、生產、行銷等）與支援活動（研發、人資等），找出真正的附加價值所在。",
-        "VRIN 核心能耐評估：針對盤點出的關鍵有形與無形資源，嚴格檢驗其是否具備有價值 (Valuable)、稀缺 (Rare)、難以模仿 (Inimitable) 以及不可替代 (Non-substitutable) 的特性，以確認持久競爭優勢。",
-        "動態能力 (Dynamic Capabilities)：評估企業在面對快速變化的外部環境時，感知機會、掌握機會以及重組內外部資源的敏捷適應能力。"
+        '企業價值鏈、VRIN 核心能耐評估、動態能力 (Dynamic Capabilities)。'
       ]},
       { id:'tp3', title:'TP3: 集團策略與未來發展', items:[
-        "成長策略構面：分析企業層級 (Corporate-level) 應如何透過「垂直整合 (Vertical Integration)」、「產品多角化 (Diversification)」或「地理區域擴張 (Geographic Expansion)」來尋求下一波成長。",
-        "進入模式 (Entry Modes)：評估上述成長策略應採取的手段，如內部自建 (Organic growth)、策略聯盟 (Strategic Alliances)、或是併購 (M&A)。",
-        "未來挑戰與治理：考量企業轉型需求，並納入公司治理 (如代理問題 Agency Problem) 與利害關係人利益 (如 ESG 永續發展) 的平衡，提出具體且具前瞻性的高階策略建議。"
+        '垂直整合、多角化、地理擴張、ESG、治理與未來建議。'
       ]}
-    ],
-    footer_desc: "致力於提供頂尖的國際企業策略分析與執行方案。",
-    footer_rights: "© 2026 SMMC. 保留所有權利。",
-    footer_version: "Version 2.1.0 (2026.04) — ReAct Edition",
-    menu_home: "首頁", menu_about: "關於 SMMC", menu_contact: "聯絡我們", menu_privacy: "隱私權政策",
-    architect_label: "Architect:", architect_name: "Prof. Shihmin Lo",
-    architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
-    report_saved: "報告已儲存至雲端資料庫",
-    processing: "協同處理中...",
-    skeleton_agent1: "產業分析師正在彙整總體環境資料...",
-    skeleton_agent2: "資源精算師正在評估核心能耐...",
-    skeleton_agent3: "策略長正在擬定最終藍圖...",
-    report_placeholder_title: "請在左側輸入企業名稱啟動分析",
-    report_placeholder_desc: "各 Agent 將在此接力呈現報告結果",
-    rag_label: "Context Injected from Knowledge Base",
+    ]
   },
   en: {
-    brand: "SMMC",
-    title: "Strategy Research and Deployment for MNCs", subtitle: "AI Collaborative Workspace",
-    title_en_sub: "國際企業策略研究與執行",
-    smmc_hub: "TP0-TP3 foundational knowledge is acquired via SMMC Executive Hub",
-    start_btn: "Start Agentic Analysis",
-    ph_company: "Enter Company Name (e.g., TSMC, Giant...)",
-    opt_news: "Auto-collect Web News (Real-time)", opt_ir: "Deep Search Official Site / IR pages",
-    opt_file: "Connect Database / Import Files",
-    export_btn: "Export Report (.md)",
-    agent1: "Agent 1: Macro & Industry Analyst (TP0-TP1)",
-    agent2: "Agent 2: Resources & Capabilities (TP2)",
-    agent3: "Agent 3: Corporate Strategy & Future (TP3)",
-    status_idle: "Awaiting input", status_search: "🔍 Searching company data online...",
-    status_rag: "🔍 Retrieving knowledge...", status_thinking: "🧠 Thinking...",
-    status_done: "✅ Done", status_saving: "💾 Saving report...",
-    err_empty: "Please enter a company name.", err_api: "An error occurred, please try again.",
-    login_title: "Token Verification", login_ph: "Enter access token",
-    login_btn: "Verify & Login", login_err: "Invalid token, please retry",
-    login_hint: "Please obtain the access token from your instructor",
-    logout: "Logout",
-    history_title: "Report History", history_empty: "No reports yet",
-    history_load: "Load Report", history_search_ph: "Search company name...",
-    history_back: "← Back to New Analysis",
-    tab_new: "New Analysis", tab_history: "Report History",
-    news_years: "Search range: past",
-    news_years_suffix: "years",
-    file_support: "Supports PDF, Word, Excel, PPT, TXT, MD, CSV",
-    data_source_title: "Data Source Settings",
-    reminders_title: "TP0~TP3 Framework Reference",
+    brand: 'SMMC',
+    title: 'Strategy Research and Deployment for MNCs', subtitle: 'AI Collaborative Workspace',
+    title_en_sub: '國際企業策略研究與執行',
+    smmc_hub: 'TP0-TP3 foundational knowledge is acquired via SMMC Executive Hub',
+    start_btn: 'Start Single-Pass Analysis',
+    ph_company: 'Enter Company Name (e.g., TSMC, Giant...)',
+    opt_news: 'Auto-collect Web News (Real-time)', opt_ir: 'Deep Search Official Site / IR pages',
+    opt_file: 'Connect Database / Import Files', export_btn: 'Export Report (.md)',
+    agent1: 'Agent 1: Macro & Industry Analyst (TP0-TP1)',
+    agent2: 'Agent 2: Resources & Capabilities (TP2)',
+    agent3: 'Agent 3: Corporate Strategy & Future (TP3)',
+    status_idle: 'Awaiting input', status_search: '🔍 Searching company data online...',
+    status_rag: '🔍 Retrieving knowledge...', status_thinking: '🧠 Generating in single-pass...',
+    status_done: '✅ Done', status_saving: '💾 Saving report...',
+    err_empty: 'Please enter a company name.', err_api: 'An error occurred, please try again.',
+    login_title: 'Token Verification', login_ph: 'Enter access token',
+    login_btn: 'Verify & Login', login_err: 'Invalid token, please retry',
+    login_hint: 'Please obtain the access token from your instructor', logout: 'Logout',
+    history_title: 'Report History', history_empty: 'No reports yet', history_load: 'Load Report', history_search_ph: 'Search company name...',
+    tab_new: 'New Analysis', tab_history: 'Report History',
+    news_years: 'Search range: past', news_years_suffix: 'years',
+    file_support: 'Supports PDF, Word, Excel, PPT, TXT, MD, CSV',
+    data_source_title: 'Data Source Settings', reminders_title: 'TP0~TP3 Framework Reference',
+    footer_version: 'Version 2.2.0 (Apr 2026) — Single-Pass Edition',
+    report_saved: 'Report saved to cloud database', processing: 'Processing...',
+    report_placeholder_title: 'Enter a company name on the left to begin',
+    report_placeholder_desc: 'Agent reports will be presented here sequentially in single-pass mode',
+    rag_label: 'Context Injected from Knowledge Base',
     reminders: [
-      { id:'tp0', title:'TP0: Background & Overview', items:[
-        "Define the fundamental profile and trajectory of the enterprise, including founding background, core Vision, and Mission.",
-        "Review financial performance over the past 3-5 years (e.g., revenue, gross margin, EPS) to establish a baseline for strategic analysis and identify the current stage of the corporate life cycle."
-      ]},
-      { id:'tp1', title:'TP1: Macro & Industry Analysis', items:[
-        "PESTEL Analysis: An outside-in evaluation of potential impacts from Political, Economic, Social, Technological, Environmental, and Legal factors.",
-        "Five Forces Analysis: Deep dive into industry rivalry, threat of new entrants, threat of substitutes, and the bargaining power of both suppliers and buyers.",
-        "Industry Value Chain & Life Cycle: Clarify the firm's role within the overall industry chain (upstream, midstream, downstream), the distribution of the profit pool, and assess the stage of life cycle evolution.",
-        "4P Summary: Conclude the firm's current Position, Priority, Posture, and Profit potential."
-      ]},
-      { id:'tp2', title:'TP2: Resources & Capabilities', items:[
-        "Corporate Value Chain: Breakdown of primary activities (inbound logistics, operations, marketing) and support activities (R&D, HR) to pinpoint true value addition.",
-        "VRIN Assessment: Rigorously test key tangible and intangible resources for being Valuable, Rare, Inimitable, and Non-substitutable to confirm sustainable competitive advantage.",
-        "Dynamic Capabilities: Evaluate the firm's agility to sense opportunities, seize them, and reconfigure internal/external resources in rapidly changing environments."
-      ]},
-      { id:'tp3', title:'TP3: Corporate Strategy & Future', items:[
-        "Growth Strategies: Analyze how the corporate level should pursue growth through Vertical Integration, Product Diversification, or Geographic Expansion.",
-        "Entry Modes: Evaluate the mechanisms for executing these growth strategies, such as Organic growth, Strategic Alliances, or Mergers and Acquisitions (M&A).",
-        "Future Challenges & Governance: Address transformation needs, balancing corporate governance (e.g., the Agency Problem) and stakeholder interests (e.g., ESG sustainability), to provide forward-looking strategic recommendations."
-      ]}
-    ],
-    footer_desc: "Dedicated to providing top-tier strategy analysis and deployment solutions for multinational corporations.",
-    footer_rights: "© 2026 SMMC. All rights reserved.",
-    footer_version: "Version 2.1.0 (Apr 2026) — ReAct Edition",
-    menu_home: "Home", menu_about: "About SMMC", menu_contact: "Contact Us", menu_privacy: "Privacy Policy",
-    architect_label: "Architect:", architect_name: "Prof. Shihmin Lo",
-    architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
-    report_saved: "Report saved to cloud database",
-    processing: "Processing...",
-    skeleton_agent1: "Industry analyst compiling macro environment data...",
-    skeleton_agent2: "Resource analyst evaluating core capabilities...",
-    skeleton_agent3: "CSO drafting the final strategic blueprint...",
-    report_placeholder_title: "Enter a company name on the left to begin",
-    report_placeholder_desc: "Agent reports will be presented here sequentially",
-    rag_label: "Context Injected from Knowledge Base",
+      { id:'tp0', title:'TP0: Background & Overview', items:['Founding background, mission, vision, and financial baseline.']},
+      { id:'tp1', title:'TP1: Macro & Industry Analysis', items:['PESTEL, Five Forces, value chain, life cycle, 4P summary.']},
+      { id:'tp2', title:'TP2: Resources & Capabilities', items:['Value chain, VRIN, dynamic capabilities.']},
+      { id:'tp3', title:'TP3: Corporate Strategy & Future', items:['VI, diversification, geographic expansion, governance, ESG, recommendations.']}
+    ]
   }
 };
 
-/* ===== (Agent prompts now handled server-side in Worker ReAct loop) ===== */
-
-/* ===== Login Screen ===== */
 function LoginScreen({ onLogin, lang, setLang }) {
   const [token, setToken] = useState('');
   const [group, setGroup] = useState('');
@@ -325,8 +251,8 @@ function LoginScreen({ onLogin, lang, setLang }) {
         const finalGroup = role === 'student' ? group : (res.group || '');
         if (role === 'student' && !group) { setError(lang==='zh'?'請選擇組別':'Please select a group'); setLoading(false); return; }
         onLogin(token, role, finalGroup, res.label || '');
-      } else { setError(res.error || t.login_err); }
-    } catch(e) { setError(t.login_err); }
+      } else setError(res.error || t.login_err);
+    } catch(e) { setError(e.message || t.login_err); }
     setLoading(false);
   };
 
@@ -334,26 +260,16 @@ function LoginScreen({ onLogin, lang, setLang }) {
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#f4f4f4] dark:bg-[#121212]">
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <div className="p-3 bg-primary/10 dark:bg-secondary/10 rounded-xl"><IconBot /></div>
-            <span className="font-serif font-black text-3xl tracking-widest text-primary dark:text-secondary">{t.brand}</span>
-          </div>
+          <div className="inline-flex items-center gap-3 mb-4"><div className="p-3 bg-primary/10 dark:bg-secondary/10 rounded-xl"><IconBot /></div><span className="font-serif font-black text-3xl tracking-widest text-primary dark:text-secondary">{t.brand}</span></div>
           <h1 className="font-serif font-bold text-xl text-primary dark:text-secondary">{t.title}</h1>
           <p className="text-sm text-slate-500 mt-1">{t.subtitle}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 border border-slate-200 dark:border-slate-700 shadow-lg">
-          <div className="flex items-center gap-3 mb-6">
-            <IconLock />
-            <h2 className="font-serif font-bold text-lg text-primary dark:text-secondary">{t.login_title}</h2>
-          </div>
-          <input type="password" value={token} onChange={e => setToken(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            placeholder={t.login_ph}
-            className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white mb-4" />
+          <div className="flex items-center gap-3 mb-6"><IconLock /><h2 className="font-serif font-bold text-lg text-primary dark:text-secondary">{t.login_title}</h2></div>
+          <input type="password" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder={t.login_ph} className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white mb-4" />
           <div className="mb-4">
             <label className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1 block">{lang==='zh'?'組別 (學生必選)':'Group (required for students)'}</label>
-            <select value={group} onChange={e => setGroup(e.target.value)}
-              className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none dark:text-white">
+            <select value={group} onChange={e => setGroup(e.target.value)} className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none dark:text-white">
               <option value="">{lang==='zh'?'— 請選擇組別 —':'— Select group —'}</option>
               {groups.map(g => <option key={g} value={g}>{g}</option>)}
               <option value="TA">TA</option>
@@ -361,169 +277,18 @@ function LoginScreen({ onLogin, lang, setLang }) {
             </select>
           </div>
           {error && <p className="text-red-500 text-sm mb-4 flex items-center gap-1"><IconAlert />{error}</p>}
-          <button onClick={handleLogin} disabled={loading || !token.trim()}
-            className="w-full py-3 rounded-xl font-bold bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex justify-center items-center gap-2">
-            {loading ? <><IconLoader /> {t.processing}</> : t.login_btn}
-          </button>
+          <button onClick={handleLogin} disabled={loading || !token.trim()} className="w-full py-3 rounded-xl font-bold bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex justify-center items-center gap-2">{loading ? <><IconLoader /> {t.processing}</> : t.login_btn}</button>
           <p className="text-xs text-slate-400 mt-4 text-center">{t.login_hint}</p>
         </div>
         <div className="flex justify-center gap-2 mt-6">
-          <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')}
-            className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50">
-            {lang === 'zh' ? 'EN' : '中文'}
-          </button>
-          <button onClick={() => setIsDark(d => !d)}
-            className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50">
-            {isDark ? <IconSun /> : <IconMoon />}
-          </button>
+          <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50">{lang === 'zh' ? 'EN' : '中文'}</button>
+          <button onClick={() => setIsDark(d => !d)} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50">{isDark ? <IconSun /> : <IconMoon />}</button>
         </div>
       </div>
     </div>
   );
 }
 
-/* ===== Admin Panel Component ===== */
-function AdminPanel({ authToken, lang, t, api }) {
-  const [adminTab, setAdminTab] = useState('tokens');
-  const [tokens, setTokens] = useState([]);
-  const [kbStats, setKbStats] = useState(null);
-  const [usageStats, setUsageStats] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  // Token form
-  const [newRole, setNewRole] = useState('student');
-  const [newTokenVal, setNewTokenVal] = useState('');
-  const [newLabel, setNewLabel] = useState('');
-  const [newLimit, setNewLimit] = useState(10);
-  const [newExpiry, setNewExpiry] = useState('');
-
-  const loadTokens = async () => { setLoading(true); try { const r = await api('admin_get_tokens', {}, authToken); if(r.ok) setTokens(r.tokens||[]); } catch(e){} setLoading(false); };
-  const loadKB = async () => { setLoading(true); try { const r = await api('admin_kb_stats', {}, authToken); if(r.ok) setKbStats(r); } catch(e){} setLoading(false); };
-  const loadUsage = async () => { setLoading(true); try { const r = await api('admin_usage_stats', {}, authToken); if(r.ok) setUsageStats(r); } catch(e){} setLoading(false); };
-
-  useEffect(() => {
-    if (adminTab === 'tokens') loadTokens();
-    else if (adminTab === 'kb') loadKB();
-    else if (adminTab === 'usage') loadUsage();
-  }, [adminTab]);
-
-  const addToken = async () => {
-    if (!newTokenVal.trim()) return;
-    await api('admin_set_token', { role: newRole, tokenValue: newTokenVal, label: newLabel, dailyLimit: newLimit, expiresAt: newExpiry || '' }, authToken);
-    setNewTokenVal(''); setNewLabel('');
-    loadTokens();
-  };
-
-  const deleteToken = async (id) => {
-    if (!confirm(lang==='zh'?'確定刪除此 Token？':'Delete this token?')) return;
-    await api('admin_delete_token', { tokenId: id }, authToken);
-    loadTokens();
-  };
-
-  const clearKB = async (company) => {
-    const msg = company ? `清除「${company}」的知識庫？` : '清除全部知識庫？此操作不可復原。';
-    if (!confirm(msg)) return;
-    await api('admin_clear_kb', { company: company || undefined }, authToken);
-    loadKB();
-  };
-
-  const tabBtn = (id, label) => (
-    <button onClick={() => setAdminTab(id)} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${adminTab===id?'bg-primary text-white dark:bg-secondary dark:text-primary':'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>{label}</button>
-  );
-
-  return (
-    <div className="animate-fade-in space-y-6">
-      <div className="flex gap-2 flex-wrap">{tabBtn('tokens', lang==='zh'?'Token 管理':'Token Management')}{tabBtn('kb', lang==='zh'?'知識庫統計':'KB Stats')}{tabBtn('usage', lang==='zh'?'使用量統計':'Usage Stats')}</div>
-
-      {adminTab === 'tokens' && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-serif font-bold text-primary dark:text-secondary text-lg mb-4">{lang==='zh'?'Token 管理':'Token Management'}</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
-            <select value={newRole} onChange={e => setNewRole(e.target.value)} className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white">
-              <option value="student">Student</option>
-              <option value="ta">TA</option>
-            </select>
-            <input placeholder="Token value" value={newTokenVal} onChange={e => setNewTokenVal(e.target.value)} className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white" />
-            <input placeholder={lang==='zh'?'標籤 (如 全班/TA姓名)':'Label'} value={newLabel} onChange={e => setNewLabel(e.target.value)} className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white" />
-            <div className="flex items-center gap-2">
-              <input type="number" min="1" max="100" value={newLimit} onChange={e => setNewLimit(Number(e.target.value))} className="w-20 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white" />
-              <span className="text-xs text-slate-400">{lang==='zh'?'次/天':'/day'}</span>
-            </div>
-            <div className="flex gap-2">
-              <input type="date" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white" />
-              <button onClick={addToken} className="px-4 py-2 bg-primary dark:bg-secondary text-white dark:text-primary rounded-lg text-sm font-bold hover:opacity-90 shrink-0">+</button>
-            </div>
-          </div>
-          {loading ? <p className="text-center text-slate-400 py-4"><IconLoader /></p> : (
-            <div className="space-y-2">
-              {tokens.length === 0 ? <p className="text-slate-400 text-sm text-center py-4">{lang==='zh'?'尚未設定任何 Token。請先新增學生或 TA 的 Token。':'No tokens set. Add student or TA tokens above.'}</p> : tokens.map(tk => (
-                <div key={tk.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600 text-sm">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${tk.role==='ta'?'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300':'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>{tk.role.toUpperCase()}</span>
-                    <span className="font-mono text-xs text-slate-500">{tk.token_value}</span>
-                    {tk.label && <span className="text-xs text-slate-400">({tk.label})</span>}
-                    <span className="text-xs text-slate-400">{tk.daily_limit}{lang==='zh'?'次/天':'/day'}</span>
-                    {tk.expires_at && <span className="text-xs text-amber-600">{lang==='zh'?'到期':'exp'}: {tk.expires_at.slice(0,10)}</span>}
-                  </div>
-                  <button onClick={() => deleteToken(tk.id)} className="text-red-400 hover:text-red-600 text-xs font-bold px-2">✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {adminTab === 'kb' && kbStats && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-serif font-bold text-primary dark:text-secondary text-lg mb-4">{lang==='zh'?'知識庫統計':'Knowledge Base Stats'}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 text-center"><p className="text-2xl font-bold text-primary dark:text-secondary">{kbStats.total}</p><p className="text-xs text-slate-400 mt-1">{lang==='zh'?'總筆數':'Total entries'}</p></div>
-            {(kbStats.byCategory||[]).map((c,i) => (
-              <div key={i} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 text-center"><p className="text-xl font-bold text-slate-600 dark:text-slate-300">{c.cnt}</p><p className="text-xs text-slate-400 mt-1">{c.category}</p></div>
-            ))}
-          </div>
-          <h4 className="font-bold text-sm text-slate-600 dark:text-slate-400 mb-3">{lang==='zh'?'按企業分佈':'By company'}</h4>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {(kbStats.byCompany||[]).map((c,i) => (
-              <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg text-sm">
-                <span><span className="font-bold">{c.company}</span> <span className="text-xs text-slate-400 ml-2">[{c.category}]</span></span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">{c.cnt} {lang==='zh'?'筆':'entries'}</span>
-                  <button onClick={() => clearKB(c.company)} className="text-red-400 hover:text-red-600 text-xs px-2">🗑</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => clearKB(null)} className="mt-4 px-4 py-2 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm font-bold hover:bg-red-200 dark:hover:bg-red-900/40">{lang==='zh'?'清除全部知識庫':'Clear all KB'}</button>
-        </div>
-      )}
-
-      {adminTab === 'usage' && usageStats && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
-          <h3 className="font-serif font-bold text-primary dark:text-secondary text-lg mb-4">{lang==='zh'?'使用量統計':'Usage Statistics'}</h3>
-          <h4 className="font-bold text-sm text-slate-600 dark:text-slate-400 mb-3">{lang==='zh'?'今日使用量':'Today'}</h4>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {(usageStats.today||[]).map((u,i) => (
-              <div key={i} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 text-center"><p className="text-xl font-bold text-primary dark:text-secondary">{u.cnt}</p><p className="text-xs text-slate-400 mt-1">{u.owner_group}</p></div>
-            ))}
-            {(usageStats.today||[]).length === 0 && <p className="col-span-4 text-center text-slate-400 text-sm py-4">{lang==='zh'?'今日尚無使用記錄':'No usage today'}</p>}
-          </div>
-          <h4 className="font-bold text-sm text-slate-600 dark:text-slate-400 mb-3">{lang==='zh'?'累計使用量':'Total'}</h4>
-          <div className="space-y-2">
-            {(usageStats.total||[]).map((u,i) => (
-              <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg text-sm">
-                <span className="font-bold">{u.owner_group}</span>
-                <span className="text-xs text-slate-400">{u.cnt} {lang==='zh'?'次分析':'analyses'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ===== Main Application ===== */
 function App() {
   const [authToken, setAuthToken] = useState(() => sessionStorage.getItem('smmc_token') || '');
   const [userRole, setUserRole] = useState(() => sessionStorage.getItem('smmc_role') || '');
@@ -531,16 +296,14 @@ function App() {
   const [lang, setLang] = useState('zh');
   const [isDark, setIsDark] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   const [company, setCompany] = useState('');
   const [optNews, setOptNews] = useState(true);
   const [newsYears, setNewsYears] = useState(3);
   const [optIR, setOptIR] = useState(true);
   const [optFile, setOptFile] = useState(false);
-  const [fileContents, setFileContents] = useState('');
-
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [activeReminder, setActiveReminder] = useState(null);
-  const [activeTab, setActiveTab] = useState('new'); // 'new' or 'history'
+  const [activeTab, setActiveTab] = useState('new');
   const [workflowState, setWorkflowState] = useState('idle');
   const [ragContext, setRagContext] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -548,22 +311,28 @@ function App() {
   const [savedMsg, setSavedMsg] = useState('');
   const [reactLog, setReactLog] = useState([]);
   const [traces, setTraces] = useState({ agent1: [], agent2: [], agent3: [] });
-  // ReAct SSE events log — managed by reactLog and traces states above
-
-  // History state
   const [historyList, setHistoryList] = useState([]);
   const [historySearch, setHistorySearch] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [viewingReport, setViewingReport] = useState(null);
 
   const t = dict[lang];
+  const isAdmin = userRole === 'admin';
+  const isTA = userRole === 'ta';
+  const canSeeTrace = isAdmin || isTA;
+  const canExport = isAdmin;
+  const isWorking = !['idle','done','error'].includes(workflowState);
 
   useEffect(() => {
     if (isDark) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDark]);
 
-  const handleLogin = (token, role, group, label) => {
+  useEffect(() => {
+    if (activeTab === 'history' && authToken) loadHistory();
+  }, [activeTab]);
+
+  const handleLogin = (token, role, group) => {
     setAuthToken(token); setUserRole(role); setUserGroup(group);
     sessionStorage.setItem('smmc_token', token);
     sessionStorage.setItem('smmc_role', role);
@@ -577,25 +346,12 @@ function App() {
     sessionStorage.removeItem('smmc_group');
   };
 
-  const isAdmin = userRole === 'admin';
-  const isTA = userRole === 'ta';
-  const isStudent = userRole === 'student';
-  const canSeeTrace = isAdmin || isTA;
-  const canExport = isAdmin;
-
-  // Load history when tab changes
-  useEffect(() => {
-    if (activeTab === 'history' && authToken) {
-      loadHistory();
-    }
-  }, [activeTab]);
-
   const loadHistory = async () => {
     setHistoryLoading(true);
     try {
       const res = await api('list_reports', { company: historySearch || undefined, role: userRole, group: userGroup }, authToken);
       if (res.ok) setHistoryList(res.reports || []);
-    } catch (err) { console.error(err); }
+    } catch (err) {}
     setHistoryLoading(false);
   };
 
@@ -610,16 +366,14 @@ function App() {
         setWorkflowState('done');
         setActiveTab('new');
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {}
   };
-
-  const [uploadedFiles, setUploadedFiles] = useState([]);
 
   const handleFileUpload = (e) => {
     const SUPPORTED_EXT = /\.(txt|md|csv|json|pdf|docx?|xlsx?|pptx?)$/i;
     const allFiles = Array.from(e.target.files);
     const files = allFiles.filter(f => SUPPORTED_EXT.test(f.name));
-    if (!files.length) { setUploadedFiles([]); setFileContents(''); return; }
+    if (!files.length) { setUploadedFiles([]); return; }
     const filePromises = files.map(file => new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -628,19 +382,11 @@ function App() {
       };
       reader.readAsDataURL(file);
     }));
-    Promise.all(filePromises).then(results => {
-      setUploadedFiles(prev => [...prev, ...results]);
-      setFileContents(results.map(f => f.fileName).join(', '));
-    });
+    Promise.all(filePromises).then(results => setUploadedFiles(prev => [...prev, ...results]));
   };
 
   const exportReport = () => {
-    const content = `# ${company} 企業策略綜合分析報告\n\n` +
-      `> 報告產出時間：${new Date().toLocaleString()}\n` +
-      `> 理論基礎：SMMC 雙語互動學習 Hub (TP0-TP3)\n\n` +
-      `## ${t.agent1}\n${reports.agent1}\n\n` +
-      `## ${t.agent2}\n${reports.agent2}\n\n` +
-      `## ${t.agent3}\n${reports.agent3}\n`;
+    const content = `# ${company} 企業策略綜合分析報告\n\n> 報告產出時間：${new Date().toLocaleString()}\n> 架構：Single-Pass 3-Agent\n\n## ${t.agent1}\n${reports.agent1}\n\n## ${t.agent2}\n${reports.agent2}\n\n## ${t.agent3}\n${reports.agent3}\n`;
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -648,176 +394,31 @@ function App() {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
-  const exportPDF = () => {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-    const renderMd = (md) => marked.parse((md || '')
-      .replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"'));
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Inter:wght@400;500;600&display=swap');
-@page { size: A4; margin: 2cm 2.5cm 2.5cm; @bottom-center { content: counter(page); font-size: 9px; color: #aaa; } }
-@page:first { margin: 0; @bottom-center { content: none; } }
-body { font-family: 'Inter', sans-serif; font-size: 12px; color: #333; line-height: 1.7; counter-reset: page; }
-
-/* Cover */
-.cover { background: #004030; color: #fff; width: 100%; min-height: 100vh; padding: 60px 50px 50px; display: flex; flex-direction: column; justify-content: flex-end; page-break-after: always; position: relative; box-sizing: border-box; }
-.cover .logo { position: absolute; top: 40px; right: 50px; font-family: 'Merriweather', serif; font-size: 32px; font-weight: 900; color: #D8C3A5; letter-spacing: 4px; }
-.cover .tag { display: inline-block; border: 1px solid #D8C3A5; color: #D8C3A5; font-size: 11px; padding: 3px 12px; border-radius: 4px; margin-bottom: 16px; letter-spacing: 1.5px; text-transform: uppercase; }
-.cover h1 { font-family: 'Merriweather', serif; font-size: 28px; font-weight: 700; margin: 0 0 8px; line-height: 1.3; }
-.cover h2 { font-size: 16px; font-weight: 400; color: #D8C3A5; margin: 0 0 28px; opacity: .85; }
-.cover .meta { font-size: 12px; color: rgba(255,255,255,.6); line-height: 2; }
-.cover .meta b { color: #D8C3A5; font-weight: 500; }
-
-/* TOC */
-.toc { page-break-after: always; padding: 20px 0; }
-.toc h3 { font-family: 'Merriweather', serif; font-size: 18px; font-weight: 700; color: #004030; border-bottom: 2px solid #D8C3A5; padding-bottom: 8px; margin: 0 0 16px; }
-.toc-item { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 0.5px solid #e8e8e4; }
-.toc-item .num { color: #004030; font-weight: 600; min-width: 28px; font-size: 13px; }
-.toc-item .title { flex: 1; font-size: 13px; color: #333; }
-.toc-sub { padding: 4px 0 4px 28px; font-size: 11px; color: #888; border-bottom: none; }
-
-/* Agent sections */
-.agent-section { page-break-before: always; }
-.agent-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 5px 16px; border-radius: 20px; margin-bottom: 16px; }
-.a1 { background: #dbeafe; color: #1e40af; }
-.a2 { background: #ede9fe; color: #5b21b6; }
-.a3 { background: rgba(0,64,48,.12); color: #004030; }
-
-/* Typography */
-h1, h2, h3 { font-family: 'Merriweather', serif; color: #004030; page-break-after: avoid; }
-h1 { font-size: 20px; margin: 24px 0 10px; }
-h2 { font-size: 16px; margin: 20px 0 8px; }
-h3 { font-size: 14px; margin: 16px 0 6px; }
-h4 { font-size: 13px; font-weight: 600; color: #004030; margin: 12px 0 6px; }
-h5 { font-size: 12px; font-weight: 600; color: #555; margin: 10px 0 4px; }
-p { margin: 0 0 8px; }
-ul, ol { margin: 0 0 10px; padding-left: 20px; }
-li { margin-bottom: 3px; }
-
-/* Tables */
-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11px; page-break-inside: avoid; }
-th { background: #004030; color: #D8C3A5; padding: 7px 10px; text-align: left; font-weight: 500; font-size: 10px; }
-td { padding: 6px 10px; border-bottom: 0.5px solid #e8e8e4; }
-tr:nth-child(even) td { background: #fafaf8; }
-
-/* Special blocks */
-strong { color: #004030; }
-blockquote { background: #f8f6f0; border-left: 3px solid #D8C3A5; padding: 10px 14px; margin: 12px 0; font-size: 12px; color: #555; border-radius: 0; page-break-inside: avoid; }
-code { background: #f1f1ee; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
-hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
-
-/* Footer on every page */
-.page-footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 8px 2.5cm; font-size: 9px; color: #bbb; border-top: 0.5px solid #eee; }
-.page-footer .brand { color: #004030; font-weight: 600; }
-</style></head><body>
-
-<div class="cover">
-  <div class="logo">SMMC</div>
-  <div class="tag">AI Strategy Report</div>
-  <h1>${company}</h1>
-  <h2>Enterprise Strategy Comprehensive Analysis Report</h2>
-  <div class="meta">
-    <b>Course</b> Strategic Management of Multinational Corporations (SMMC-EMI)<br>
-    <b>Framework</b> TP0 Background &bull; TP1 Industry &bull; TP2 Resources &bull; TP3 Corporate Strategy<br>
-    <b>Generated</b> ${dateStr}<br>
-    <b>Powered by</b> SMMC AI Strategy Workstation v2.1 (ReAct Agentic)<br>
-    <b>Architect</b> Prof. Shihmin Lo, Ph.D. &mdash; Dept. of International Business Studies, National Chi Nan University
-  </div>
-</div>
-
-<div class="toc">
-  <h3>Table of contents</h3>
-  <div class="toc-item"><span class="num">1</span><span class="title">TP0 &mdash; Company background and overview</span></div>
-  <div class="toc-sub">1.1 Latest news &bull; 1.2 History, vision, mission &bull; 1.3 Organization &bull; 1.4 Business portfolio &bull; 1.5 Financial performance</div>
-  <div class="toc-item"><span class="num">2</span><span class="title">TP1 &mdash; Macro environment and industry analysis</span></div>
-  <div class="toc-sub">2.1 PESTEL &bull; 2.2 Industry value chain &bull; 2.3 Life cycle &bull; 2.4 Five forces &bull; 2.5 Competitor analysis &bull; 2.6 Competitive dynamics &bull; 2.7 4P summary</div>
-  <div class="toc-item"><span class="num">3</span><span class="title">TP2 &mdash; Resources and capabilities analysis</span></div>
-  <div class="toc-sub">3.1 Organization design &bull; 3.2 Value chain &bull; 3.3 Key resources &bull; 3.4 VRIN assessment &bull; 3.5 Core competencies &bull; 3.6 Dynamic capabilities</div>
-  <div class="toc-item"><span class="num">4</span><span class="title">TP3 &mdash; Corporate strategy and future development</span></div>
-  <div class="toc-sub">4.1 Vertical integration &bull; 4.2 Product diversification &bull; 4.3 Geographic expansion &bull; 4.4 Future challenges and suggestions</div>
-</div>
-
-<div class="agent-section">
-  <div class="agent-badge a1">Agent 1: Macro &amp; Industry Analyst (TP0&ndash;TP1)</div>
-  ${renderMd(reports.agent1)}
-</div>
-
-<div class="agent-section">
-  <div class="agent-badge a2">Agent 2: Resources &amp; Capabilities Analyst (TP2)</div>
-  ${renderMd(reports.agent2)}
-</div>
-
-<div class="agent-section">
-  <div class="agent-badge a3">Agent 3: Chief Strategy Officer (TP3)</div>
-  ${renderMd(reports.agent3)}
-</div>
-
-<div class="page-footer">
-  <span class="brand">SMMC AI Strategy Workstation</span>
-  <span>${company} &mdash; ${dateStr}</span>
-  <span>Architect: Prof. Shihmin Lo</span>
-</div>
-
-</body></html>`;
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const printWin = window.open(url, '_blank');
-    printWin.onload = () => { setTimeout(() => { printWin.print(); }, 800); };
-  };
-
-  const isWorking = !['idle','done','error'].includes(workflowState);
-
-  /* ===== Main Workflow (SSE ReAct) ===== */
   const runWorkflow = async () => {
     if (!company.trim()) { setErrorMsg(t.err_empty); return; }
     setErrorMsg(''); setSavedMsg(''); setViewingReport(null);
     setReports({ agent1:'', agent2:'', agent3:'' });
-    setReactLog([]);
-    setTraces({ agent1: [], agent2: [], agent3: [] });
+    setReactLog([]); setTraces({ agent1: [], agent2: [], agent3: [] });
     const collectedReports = { agent1:'', agent2:'', agent3:'' };
     const collectedTraces = { agent1: [], agent2: [], agent3: [] };
-
     const addLog = (icon, msg) => setReactLog(prev => [...prev, { time: new Date().toLocaleTimeString(), icon, msg }]);
 
     const handleEvent = (evt) => {
       switch(evt.type) {
-        case 'react_thinking':
-          addLog('🧠', `${evt.agentId} — Round ${evt.round}/${evt.maxRounds} 思考中...`);
-          break;
-        case 'react_thought':
-          addLog('💭', `${evt.agentId} — ${evt.thought}`);
-          break;
-        case 'react_action':
-          const icons = { search:'🔍', lookup_kb:'📚', calculate:'🔢' };
-          addLog(icons[evt.action]||'🔧', `${evt.agentId} → ${evt.action}("${evt.input}")`);
-          break;
-        case 'react_observation':
-          addLog('📋', `${evt.agentId} ← ${evt.observation}`);
-          break;
-        case 'react_finish':
-          addLog('✅', `${evt.agentId} — Round ${evt.round} finish: ${evt.thought}`);
-          break;
-        case 'react_error':
-          addLog('⚠️', `${evt.agentId} — ${evt.error}`);
-          break;
-        case 'react_complete':
-          // handled separately
-          break;
+        case 'react_thinking': addLog('🧠', `${evt.agentId} — single-pass 生成中...`); break;
+        case 'react_action': addLog('⚙️', `${evt.agentId} → ${evt.action}`); break;
+        case 'react_finish': addLog('✅', `${evt.agentId} — 生成完成`); break;
+        case 'react_error': addLog('⚠️', `${evt.agentId} — ${evt.error}`); break;
       }
     };
 
     try {
-      // Phase 0: Web search
       if (optNews || optIR) {
         setWorkflowState('search');
         addLog('🌐', lang==='zh'?`線上搜尋「${company}」資料中...`:`Searching "${company}" online...`);
         await api('search', { company, optNews, newsYears, optIR, lang }, authToken);
       }
 
-      // Phase 0.5: Upload files (if any)
       if (optFile && uploadedFiles.length > 0) {
         addLog('📎', lang==='zh'?`上傳 ${uploadedFiles.length} 個檔案...`:`Uploading ${uploadedFiles.length} files...`);
         for (const f of uploadedFiles) {
@@ -830,85 +431,53 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
         }
       }
 
-      // Phase 1: RAG retrieve
       setWorkflowState('rag');
       addLog('🔍', lang==='zh'?'檢索知識庫...':'Retrieving knowledge base...');
       const ragRes = await api('rag_retrieve', { company }, authToken);
-      let context = ragRes.context || (lang==='zh'?'知識庫無相符資料。':'No data found in KB.');
+      const context = ragRes.context || (lang==='zh'?'知識庫無相符資料。':'No data found in KB.');
       setRagContext(context);
 
+      const langStr = lang==='zh'?'繁體中文（台灣用語）':'English';
       let optPrompt = '';
       if (optNews) optPrompt += `\n- 著重整合過去 ${newsYears} 年新聞與市場動態。`;
       if (optIR) optPrompt += `\n- 著重官方網站與 IR 公開資訊。`;
 
-      const langStr = lang==='zh'?'繁體中文（台灣用語）':'English';
-
-      // Phase 2: Agent 1 (ReAct SSE)
       setWorkflowState('agent1');
-      addLog('🚀', 'Agent 1 ReAct loop 啟動（前端為串行執行）');
+      addLog('🚀', 'Agent 1 single-pass 啟動');
       const r1 = await apiSSE({
-        company, agentId: 'agent1',
-        agentRole: '資深總體經濟與產業分析師',
-        taskPrompt: `分析對象: ${company}。\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
+        company, agentId: 'agent1', agentRole: '資深總體經濟與產業分析師',
+        taskPrompt: `分析對象: ${company。replace?.('', '') || company}\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
-      if (r1) {
-        collectedReports.agent1 = r1.report;
-        collectedTraces.agent1 = r1.trace || [];
-        setReports(prev => ({...prev, agent1: r1.report}));
-        setTraces(prev => ({...prev, agent1: r1.trace || []}));
-      }
+      if (r1) { collectedReports.agent1 = r1.report; collectedTraces.agent1 = r1.trace || []; setReports(prev => ({...prev, agent1: r1.report})); setTraces(prev => ({...prev, agent1: r1.trace || []})); }
 
-      // Phase 3: Agent 2 (ReAct SSE)
       setWorkflowState('agent2');
-      addLog('🚀', 'Agent 2 ReAct loop 啟動（等待 Agent 1 完成後再執行）');
+      addLog('🚀', 'Agent 2 single-pass 啟動');
       const r2 = await apiSSE({
-        company, agentId: 'agent2',
-        agentRole: '資深企業資源與價值鏈精算師',
-        taskPrompt: `分析對象: ${company}。\n【Agent 1 報告節錄】: ${(collectedReports.agent1||'').substring(0,1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
+        company, agentId: 'agent2', agentRole: '資深企業資源與價值鏈精算師',
+        taskPrompt: `分析對象: ${company}\n【Agent 1 摘要】：${(collectedReports.agent1||'').substring(0,1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
-      if (r2) {
-        collectedReports.agent2 = r2.report;
-        collectedTraces.agent2 = r2.trace || [];
-        setReports(prev => ({...prev, agent2: r2.report}));
-        setTraces(prev => ({...prev, agent2: r2.trace || []}));
-      }
+      if (r2) { collectedReports.agent2 = r2.report; collectedTraces.agent2 = r2.trace || []; setReports(prev => ({...prev, agent2: r2.report})); setTraces(prev => ({...prev, agent2: r2.trace || []})); }
 
-      // Phase 4: Agent 3 (ReAct SSE)
       setWorkflowState('agent3');
-      addLog('🚀', 'Agent 3 ReAct loop 啟動（等待 Agent 2 完成後再執行）');
+      addLog('🚀', 'Agent 3 single-pass 啟動');
       const r3 = await apiSSE({
-        company, agentId: 'agent3',
-        agentRole: '頂尖集團策略長 (CSO)',
-        taskPrompt: `分析對象: ${company}。\n【Agent 1 節錄】: ${(collectedReports.agent1||'').substring(0,1000)}...\n【Agent 2 節錄】: ${(collectedReports.agent2||'').substring(0,1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
+        company, agentId: 'agent3', agentRole: '頂尖集團策略長 (CSO)',
+        taskPrompt: `分析對象: ${company}\n【Agent 1 摘要】：${(collectedReports.agent1||'').substring(0,1000)}...\n【Agent 2 摘要】：${(collectedReports.agent2||'').substring(0,1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
-      if (r3) {
-        collectedReports.agent3 = r3.report;
-        collectedTraces.agent3 = r3.trace || [];
-        setReports(prev => ({...prev, agent3: r3.report}));
-        setTraces(prev => ({...prev, agent3: r3.trace || []}));
-      }
+      if (r3) { collectedReports.agent3 = r3.report; collectedTraces.agent3 = r3.trace || []; setReports(prev => ({...prev, agent3: r3.report})); setTraces(prev => ({...prev, agent3: r3.trace || []})); }
 
-      // Phase 5: Save
       setWorkflowState('saving');
       addLog('💾', lang==='zh'?'儲存報告至雲端...':'Saving report...');
-      await api('save_report', {
-        company, lang,
-        ownerGroup: userGroup, ownerRole: userRole,
-        agent1: collectedReports.agent1, agent2: collectedReports.agent2, agent3: collectedReports.agent3,
-        agent1Trace: collectedTraces.agent1, agent2Trace: collectedTraces.agent2, agent3Trace: collectedTraces.agent3,
-        ragContext: context, options: { optNews, newsYears, optIR, optFile }
-      }, authToken);
+      await api('save_report', { company, lang, ownerGroup: userGroup, ownerRole: userRole, agent1: collectedReports.agent1, agent2: collectedReports.agent2, agent3: collectedReports.agent3, agent1Trace: collectedTraces.agent1, agent2Trace: collectedTraces.agent2, agent3Trace: collectedTraces.agent3, ragContext: context, options: { optNews, newsYears, optIR, optFile } }, authToken);
       setSavedMsg(t.report_saved);
       addLog('🎉', lang==='zh'?'全部完成！':'All done!');
       setWorkflowState('done');
     } catch (err) {
-      console.error(err);
-      const msg = err?.message || t.err_api;
-      setErrorMsg(msg.startsWith(t.err_api) ? msg : `${t.err_api} ${msg}`);
-      addLog('❌', msg);
+      setErrorMsg((t.err_api || '') + ' ' + (err.message || ''));
+      addLog('❌', err.message || 'Error');
       setWorkflowState('error');
     }
   };
@@ -923,462 +492,94 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
     return <span className="text-slate-400 text-sm">{t.status_idle}</span>;
   };
 
-  // Auth gate
-  if (!authToken) {
-    return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} />;
-  }
+  if (!authToken) return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} />;
 
   return (
     <div className="flex flex-col h-full min-h-screen">
-      {/* Navbar */}
       <header className="sticky top-0 z-50 bg-primary text-white shadow-md border-b border-secondary/30">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => window.scrollTo({top:0,behavior:'smooth'})} title={lang==='zh'?'回到頂端':'Back to Top'}>
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({top:0,behavior:'smooth'})}>
             <div className="p-2 bg-secondary/20 rounded-lg hidden sm:block group-hover:bg-secondary/40 transition-colors"><IconBot /></div>
             <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="font-black text-xl tracking-wider text-white group-hover:text-secondary transition-colors">{t.brand}</span>
-                <span className="hidden md:inline-block w-px h-4 bg-secondary/50"></span>
-                <span className="text-[10px] sm:text-xs text-secondary/90 font-medium px-2 py-0.5 bg-secondary/10 rounded-full border border-secondary/20">{t.subtitle}</span>
-              </div>
-              <h1 className="font-serif font-bold text-sm sm:text-base md:text-lg text-secondary leading-tight mt-0.5">
-                {t.title} <span className="hidden lg:inline text-[11px] font-sans opacity-70 ml-2 font-normal tracking-wide">{t.title_en_sub}</span>
-              </h1>
+              <div className="flex items-center gap-2"><span className="font-black text-xl tracking-wider text-white group-hover:text-secondary transition-colors">{t.brand}</span><span className="hidden md:inline-block w-px h-4 bg-secondary/50"></span><span className="text-[10px] sm:text-xs text-secondary/90 font-medium px-2 py-0.5 bg-secondary/10 rounded-full border border-secondary/20">{t.subtitle}</span></div>
+              <h1 className="font-serif font-bold text-sm sm:text-base md:text-lg text-secondary leading-tight mt-0.5">{t.title} <span className="hidden lg:inline text-[11px] font-sans opacity-70 ml-2 font-normal tracking-wide">{t.title_en_sub}</span></h1>
             </div>
           </div>
           <div className="hidden md:flex items-center gap-2">
-            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer"
-              className="flex items-center gap-1 text-xs text-secondary/80 hover:text-white transition-colors mr-2 border border-secondary/30 px-2 py-1 rounded">
-              <IconLink /> SMMC Hub
-            </a>
-            <button onClick={() => setLang(l => l==='zh'?'en':'zh')} className="px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
-              {lang==='zh'?'EN':'中文'}
-            </button>
-            <button onClick={() => setIsDark(d=>!d)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Toggle Theme">
-              {isDark ? <IconSun /> : <IconMoon />}
-            </button>
-            <button onClick={handleLogout} className="flex items-center gap-1 px-2 py-1.5 text-xs text-secondary/70 hover:text-white transition-colors" title={t.logout}>
-              <IconLogOut /> <span className="hidden lg:inline">{t.logout}</span>
-            </button>
+            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-secondary/80 hover:text-white transition-colors mr-2 border border-secondary/30 px-2 py-1 rounded"><IconLink /> SMMC Hub</a>
+            <button onClick={() => setLang(l => l==='zh'?'en':'zh')} className="px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors">{lang==='zh'?'EN':'中文'}</button>
+            <button onClick={() => setIsDark(d=>!d)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">{isDark ? <IconSun /> : <IconMoon />}</button>
+            <button onClick={handleLogout} className="flex items-center gap-1 px-2 py-1.5 text-xs text-secondary/70 hover:text-white transition-colors"><IconLogOut /> <span className="hidden lg:inline">{t.logout}</span></button>
           </div>
-          <div className="md:hidden flex items-center">
-            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-secondary">
-              {isMobileMenuOpen ? <IconX /> : <IconMenu />}
-            </button>
-          </div>
+          <div className="md:hidden flex items-center"><button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-secondary">{isMobileMenuOpen ? <IconX /> : <IconMenu />}</button></div>
         </div>
-        {isMobileMenuOpen && (
-          <div className="md:hidden bg-primary dark:bg-slate-900 border-b border-secondary/20 px-6 py-5 shadow-xl flex flex-col gap-5 animate-fade-in absolute w-full top-16 left-0 z-40">
-            <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer"
-              className="flex items-center gap-2 text-sm text-white hover:text-secondary transition-colors border-b border-white/10 pb-4">
-              <IconLink /> SMMC Hub
-            </a>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white/80">Language</span>
-              <button onClick={() => {setLang(l => l==='zh'?'en':'zh'); setIsMobileMenuOpen(false);}} className="px-4 py-2 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg text-white">
-                {lang==='zh'?'English':'中文'}
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white/80">Theme</span>
-              <button onClick={() => {setIsDark(d=>!d); setIsMobileMenuOpen(false);}} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg flex items-center gap-2 text-xs font-bold text-white">
-                {isDark ? <><IconSun/> Light</> : <><IconMoon/> Dark</>}
-              </button>
-            </div>
-            <button onClick={() => {handleLogout(); setIsMobileMenuOpen(false);}} className="flex items-center gap-2 text-sm text-red-300 hover:text-red-100 transition-colors pt-2 border-t border-white/10">
-              <IconLogOut /> {t.logout}
-            </button>
-          </div>
-        )}
       </header>
 
-      {/* SMMC Hub Banner */}
       <div className="bg-secondary/10 dark:bg-secondary/5 border-b border-secondary/20 py-2 px-4 text-center">
-        <p className="text-xs sm:text-sm text-primary dark:text-secondary flex items-center justify-center gap-2">
-          <IconLink /> {t.smmc_hub}
-          <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="underline font-bold hover:text-primary/70 ml-1">
-            ({lang==='zh'?'點此登入':'Login'})
-          </a>
-        </p>
+        <p className="text-xs sm:text-sm text-primary dark:text-secondary flex items-center justify-center gap-2"><IconLink /> {t.smmc_hub}<a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="underline font-bold hover:text-primary/70 ml-1">({lang==='zh'?'點此登入':'Login'})</a></p>
       </div>
 
-      {/* Tabs */}
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4 flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1 bg-slate-200 dark:bg-slate-700 rounded-xl p-1 w-fit">
-          <button onClick={() => setActiveTab('new')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='new'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
-            <IconBot /> {t.tab_new}
-          </button>
-          <button onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='history'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
-            <IconHistory /> {t.tab_history}
-          </button>
-          {isAdmin && (
-            <button onClick={() => setActiveTab('admin')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='admin'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
-              ⚙ Admin
-            </button>
-          )}
+          <button onClick={() => setActiveTab('new')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='new'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}><IconBot /> {t.tab_new}</button>
+          <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='history'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}><IconHistory /> {t.tab_history}</button>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs px-3 py-1 rounded-full font-bold ${isAdmin?'bg-primary/20 text-primary dark:bg-secondary/20 dark:text-secondary':isTA?'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300':'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
-            {isAdmin?'Professor':isTA?'TA':userGroup||'Student'}
-          </span>
-        </div>
+        <div className="flex items-center gap-2"><span className={`text-xs px-3 py-1 rounded-full font-bold ${isAdmin?'bg-primary/20 text-primary dark:bg-secondary/20 dark:text-secondary':isTA?'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300':'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>{isAdmin?'Professor':isTA?'TA':userGroup||'Student'}</span></div>
       </div>
 
-      {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6">
-        {activeTab === 'admin' && isAdmin ? (
-          /* ===== Admin Tab ===== */
-          <AdminPanel authToken={authToken} lang={lang} t={dict[lang]} api={api} />
-        ) : activeTab === 'history' ? (
-          /* ===== History Tab ===== */
-          <div className="animate-fade-in">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <IconHistory />
-                <h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">{t.history_title}</h2>
-              </div>
-              <div className="flex gap-2 mb-6">
-                <div className="relative flex-1">
-                  <IconSearch />
-                  <input type="text" value={historySearch} onChange={e => setHistorySearch(e.target.value)}
-                    onKeyDown={e => e.key==='Enter' && loadHistory()}
-                    placeholder={t.history_search_ph}
-                    className="w-full pl-8 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none text-sm dark:text-white" />
-                </div>
-                <button onClick={loadHistory} className="px-4 py-2 bg-primary dark:bg-secondary text-white dark:text-primary rounded-xl text-sm font-bold hover:opacity-90">
-                  <IconSearch />
-                </button>
-              </div>
-              {historyLoading ? (
-                <div className="flex items-center justify-center py-12 text-slate-400"><IconLoader /> <span className="ml-2">Loading...</span></div>
-              ) : historyList.length === 0 ? (
-                <p className="text-center text-slate-400 py-12">{t.history_empty}</p>
-              ) : (
-                <div className="space-y-3">
-                  {historyList.map(r => (
-                    <div key={r.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/30 dark:hover:border-secondary/30 transition-colors">
-                      <div>
-                        <p className="font-bold text-sm text-primary dark:text-secondary">{r.company}</p>
-                        <p className="text-xs text-slate-400 mt-1">{new Date(r.created_at+'Z').toLocaleString()} · {r.lang.toUpperCase()}</p>
-                      </div>
-                      <button onClick={() => loadReport(r.id)}
-                        className="px-4 py-2 text-xs font-bold bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary rounded-lg hover:bg-primary/20 dark:hover:bg-secondary/20 transition-colors">
-                        {t.history_load}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        {activeTab === 'history' ? (
+          <div className="animate-fade-in"><div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm"><div className="flex items-center gap-3 mb-6"><IconHistory /><h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">{t.history_title}</h2></div><div className="flex gap-2 mb-6"><div className="relative flex-1"><input type="text" value={historySearch} onChange={e => setHistorySearch(e.target.value)} onKeyDown={e => e.key==='Enter' && loadHistory()} placeholder={t.history_search_ph} className="w-full pl-8 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none text-sm dark:text-white" /></div><button onClick={loadHistory} className="px-4 py-2 bg-primary dark:bg-secondary text-white dark:text-primary rounded-xl text-sm font-bold hover:opacity-90"><IconSearch /></button></div>{historyLoading ? <div className="flex items-center justify-center py-12 text-slate-400"><IconLoader /> <span className="ml-2">Loading...</span></div> : historyList.length === 0 ? <p className="text-center text-slate-400 py-12">{t.history_empty}</p> : <div className="space-y-3">{historyList.map(r => <div key={r.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/30 dark:hover:border-secondary/30 transition-colors"><div><p className="font-bold text-sm text-primary dark:text-secondary">{r.company}</p><p className="text-xs text-slate-400 mt-1">{new Date(r.created_at+'Z').toLocaleString()} · {r.lang.toUpperCase()}</p></div><button onClick={() => loadReport(r.id)} className="px-4 py-2 text-xs font-bold bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary rounded-lg hover:bg-primary/20 dark:hover:bg-secondary/20 transition-colors">{t.history_load}</button></div>)}</div>}</div></div>
         ) : (
-          /* ===== New Analysis Tab ===== */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-            {/* Left Column: Controls */}
             <div className="lg:col-span-4 space-y-6 flex flex-col">
-              {/* Input Panel */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
                 <h2 className="font-serif font-bold text-primary dark:text-secondary mb-4 text-lg">1. Target Company</h2>
-                <input type="text" value={company} onChange={e => setCompany(e.target.value)} disabled={isWorking}
-                  placeholder={t.ph_company}
-                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white" />
-
-                {/* Data Source Options */}
+                <input type="text" value={company} onChange={e => setCompany(e.target.value)} disabled={isWorking} placeholder={t.ph_company} className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white" />
                 <div className="mt-4 mb-6 space-y-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                   <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.data_source_title}</h3>
-                  <label className="flex items-start gap-2 cursor-pointer group">
-                    <input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors">{t.opt_news}</span>
-                      {optNews && (
-                        <div className="mt-1 flex items-center gap-2 text-xs">
-                          <span className="text-slate-500">{t.news_years}</span>
-                          <select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))}
-                            className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">
-                            {[1,2,3,4,5].map(y => <option key={y} value={y}>{y} {t.news_years_suffix}</option>)}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                  <label className="flex items-start gap-2 cursor-pointer group">
-                    <input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" />
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors leading-tight pt-0.5">{t.opt_ir}</span>
-                  </label>
-                  <label className="flex items-start gap-2 cursor-pointer group">
-                    <input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" />
-                    <div className="flex flex-col w-full">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>
-                      {optFile && (
-                        <div className="mt-2 space-y-2">
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'選擇檔案':'Select files'}</label>
-                              <input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking}
-                                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
-                            </div>
-                            <div className="flex-1">
-                              <label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'或選擇整個資料夾':'Or select a folder'}</label>
-                              <input type="file" webkitdirectory="true" directory="" onChange={handleFileUpload} disabled={isWorking}
-                                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-secondary/20 dark:file:text-secondary transition-all cursor-pointer" />
-                            </div>
-                          </div>
-                          {uploadedFiles.length > 0 && (
-                            <div className="text-[10px] text-green-600 dark:text-green-400">
-                              {lang==='zh'?`已選擇 ${uploadedFiles.length} 個檔案`:`${uploadedFiles.length} files selected`}: {uploadedFiles.map(f=>f.fileName).slice(0,5).join(', ')}{uploadedFiles.length>5?'...':''}
-                            </div>
-                          )}
-                          <p className="text-[10px] text-slate-400">{t.file_support}</p>
-                        </div>
-                      )}
-                    </div>
-                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.opt_news}</span>{optNews && <div className="mt-1 flex items-center gap-2 text-xs"><span className="text-slate-500">{t.news_years}</span><select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">{[1,2,3,4,5].map(y => <option key={y} value={y}>{y} {t.news_years_suffix}</option>)}</select></div>}</div></label>
+                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300 pt-0.5">{t.opt_ir}</span></label>
+                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col w-full"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 pt-0.5">{t.opt_file}</span>{optFile && <div className="mt-2 space-y-2"><input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" />{uploadedFiles.length > 0 && <div className="text-[10px] text-green-600 dark:text-green-400">{lang==='zh'?`已選擇 ${uploadedFiles.length} 個檔案`:`${uploadedFiles.length} files selected`}</div>}<p className="text-[10px] text-slate-400">{t.file_support}</p></div>}</div></label>
                 </div>
-
-                <button onClick={runWorkflow} disabled={isWorking}
-                  className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg">
-                  {isWorking ? <><IconLoader/> {t.processing}</> : t.start_btn}
-                </button>
-
-                {errorMsg && (
-                  <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 border border-red-200 dark:border-red-800/30">
-                    <IconAlert className="shrink-0 mt-0.5" /><p>{errorMsg}</p>
-                  </div>
-                )}
-                {savedMsg && (
-                  <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm rounded-lg flex items-center gap-2 border border-green-200 dark:border-green-800/30">
-                    <IconCheck /><p>{savedMsg}</p>
-                  </div>
-                )}
+                <button onClick={runWorkflow} disabled={isWorking} className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg">{isWorking ? <><IconLoader/> {t.processing}</> : t.start_btn}</button>
+                {errorMsg && <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 border border-red-200 dark:border-red-800/30"><IconAlert /><p>{errorMsg}</p></div>}
+                {savedMsg && <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm rounded-lg flex items-center gap-2 border border-green-200 dark:border-green-800/30"><IconCheck /><p>{savedMsg}</p></div>}
               </div>
 
-              {/* Workflow Tracker */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden flex-1">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-secondary/5 rounded-bl-full pointer-events-none"></div>
-                <h2 className="font-serif font-bold text-primary dark:text-secondary mb-6 text-lg">2. Agentic Workflow</h2>
-                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 dark:before:via-slate-600 before:to-transparent">
-                  {/* Search step */}
-                  <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 text-slate-500 shadow shrink-0 z-10 transition-colors">
-                      <span className="text-sm font-bold">🔍</span>
-                    </div>
-                    <div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
-                      <p className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">Web Search + RAG</p>
-                      <div className="text-xs">
-                        {workflowState === 'search' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_search}</span>
-                          : workflowState === 'rag' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_rag}</span>
-                          : !['idle','error'].includes(workflowState) ? <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><IconCheck/> Retrieved</span>
-                          : <span className="text-slate-400">Waiting</span>}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Agent steps */}
-                  {[{id:'agent1',name:t.agent1,icon:'TP1'},{id:'agent2',name:t.agent2,icon:'TP2'},{id:'agent3',name:t.agent3,icon:'TP3'}].map(agt => (
-                    <div key={agt.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
-                      <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shadow shrink-0 z-10 transition-colors
-                        ${reports[agt.id]?'bg-primary dark:bg-secondary text-white dark:text-primary':'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
-                        <span className="text-xs font-bold">{agt.icon}</span>
-                      </div>
-                      <div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
-                        <p className="font-bold text-xs text-slate-700 dark:text-slate-300 mb-1 leading-tight">{agt.name}</p>
-                        <div className="text-xs">{getStatusUI(agt.id)}</div>
-                      </div>
-                    </div>
-                  ))}
+                <h2 className="font-serif font-bold text-primary dark:text-secondary mb-6 text-lg">2. Single-Pass Workflow</h2>
+                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 dark:before:via-slate-600 before:to-transparent">
+                  <div className="relative flex items-center justify-between"><div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 text-slate-500 shadow shrink-0 z-10"><span className="text-sm font-bold">🔍</span></div><div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm"><p className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">Web Search + RAG</p><div className="text-xs">{workflowState === 'search' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_search}</span> : workflowState === 'rag' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_rag}</span> : !['idle','error'].includes(workflowState) ? <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><IconCheck/> Retrieved</span> : <span className="text-slate-400">Waiting</span>}</div></div></div>
+                  {[{id:'agent1',name:t.agent1,icon:'TP1'},{id:'agent2',name:t.agent2,icon:'TP2'},{id:'agent3',name:t.agent3,icon:'TP3'}].map(agt => <div key={agt.id} className="relative flex items-center justify-between"><div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shadow shrink-0 z-10 ${reports[agt.id]?'bg-primary dark:bg-secondary text-white dark:text-primary':'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}><span className="text-xs font-bold">{agt.icon}</span></div><div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm"><p className="font-bold text-xs text-slate-700 dark:text-slate-300 mb-1 leading-tight">{agt.name}</p><div className="text-xs">{getStatusUI(agt.id)}</div></div></div>)}
                 </div>
               </div>
 
-              {/* TP0-TP3 Reference Accordion */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-                <div className="flex items-center gap-2 text-primary dark:text-secondary mb-4">
-                  <IconBookOpen />
-                  <h2 className="font-serif font-bold text-lg">{t.reminders_title}</h2>
-                </div>
-                <div className="space-y-3">
-                  {t.reminders.map(rem => {
-                    const isOpen = activeReminder === rem.id;
-                    return (
-                      <div key={rem.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/30">
-                        <button onClick={() => setActiveReminder(isOpen?null:rem.id)}
-                          className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors focus:outline-none">
-                          <span className={`font-bold text-sm ${isOpen?'text-primary dark:text-secondary':'text-slate-700 dark:text-slate-300'}`}>{rem.title}</span>
-                          <span className="text-slate-400 dark:text-slate-500">{isOpen ? <IconChevronUp /> : <IconChevronDown />}</span>
-                        </button>
-                        {isOpen && (
-                          <div className="p-4 pt-1 border-t border-slate-200 dark:border-slate-700 animate-fade-in bg-white dark:bg-slate-800/50">
-                            <ul className="list-disc list-outside ml-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                              {rem.items.map((item,i) => <li key={i}>{item}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                <div className="flex items-center gap-2 text-primary dark:text-secondary mb-4"><IconBookOpen /><h2 className="font-serif font-bold text-lg">{t.reminders_title}</h2></div>
+                <div className="space-y-3">{t.reminders.map(rem => { const isOpen = activeReminder === rem.id; return <div key={rem.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/30"><button onClick={() => setActiveReminder(isOpen?null:rem.id)} className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"><span className={`font-bold text-sm ${isOpen?'text-primary dark:text-secondary':'text-slate-700 dark:text-slate-300'}`}>{rem.title}</span><span className="text-slate-400 dark:text-slate-500">{isOpen ? <IconChevronUp /> : <IconChevronDown />}</span></button>{isOpen && <div className="p-4 pt-1 border-t border-slate-200 dark:border-slate-700 animate-fade-in bg-white dark:bg-slate-800/50"><ul className="list-disc list-outside ml-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{rem.items.map((item,i) => <li key={i}>{item}</li>)}</ul></div>}</div>; })}</div>
               </div>
             </div>
 
-            {/* Right Column: Report Output */}
             <div className="lg:col-span-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-[600px] lg:h-[calc(100vh-14rem)] overflow-hidden">
-              <div className="bg-primary/5 dark:bg-secondary/5 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
-                <h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">3. Comprehensive Strategy Report</h2>
-                <div className="flex items-center gap-3">
-                  {viewingReport && (
-                    <span className="text-xs text-slate-400 hidden sm:block">
-                      {new Date(viewingReport.created_at+'Z').toLocaleString()}
-                    </span>
-                  )}
-                  {workflowState === 'done' && (
-                    <>
-                      <span className="hidden sm:flex bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs px-3 py-1.5 rounded-full font-bold items-center gap-1 shadow-sm"><IconCheck/> Complete</span>
-                      {canExport && (
-                        <>
-                          <button onClick={exportReport} className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600">
-                            <IconDownload /> .md
-                          </button>
-                          <button onClick={exportPDF} className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white text-xs px-4 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-secondary dark:text-primary dark:hover:bg-secondary/90">
-                            <IconDownload /> PDF
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
+              <div className="bg-primary/5 dark:bg-secondary/5 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0"><h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">3. Comprehensive Strategy Report</h2><div className="flex items-center gap-3">{workflowState === 'done' && <><span className="hidden sm:flex bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs px-3 py-1.5 rounded-full font-bold items-center gap-1 shadow-sm"><IconCheck/> Complete</span>{canExport && <button onClick={exportReport} className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white text-xs px-4 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-secondary dark:text-primary dark:hover:bg-secondary/90"><IconDownload /> .md</button>}</>}</div></div>
               <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-                {workflowState === 'idle' && (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 text-slate-300 dark:text-slate-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    <p className="font-medium text-lg">{t.report_placeholder_title}</p>
-                    <p className="text-sm mt-2">{t.report_placeholder_desc}</p>
-                  </div>
-                )}
-                {ragContext && !['idle','error'].includes(workflowState) && (
-                  <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm">
-                    <strong className="block mb-1">🔍 [{t.rag_label}]:</strong>
-                    <span className="opacity-90 text-xs whitespace-pre-wrap">{ragContext.length > 800 ? ragContext.substring(0,800) + '...' : ragContext}</span>
-                  </div>
-                )}
-                {reports.agent1 && (
-                  <div className="mb-10 animate-fade-in">
-                    <div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div>
-                    <div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent1)}} />
-                    <div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div>
-                  </div>
-                )}
-                {reports.agent2 && (
-                  <div className="mb-10 animate-fade-in">
-                    <div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div>
-                    <div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent2)}} />
-                    <div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div>
-                  </div>
-                )}
-                {reports.agent3 && (
-                  <div className="mb-6 animate-fade-in">
-                    <div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div>
-                    <div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent3)}} />
-                  </div>
-                )}
-                {['search','rag','agent1','agent2','agent3','saving'].includes(workflowState) && (
-                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 shadow-sm animate-fade-in">
-                    {canSeeTrace ? (
-                      <>
-                        <div className="flex items-center gap-3 mb-3">
-                          <IconLoader className="text-primary dark:text-secondary" />
-                          <span className="text-sm font-bold text-primary dark:text-secondary">
-                            ReAct Agent Live Trace
-                          </span>
-                          <span className="text-xs text-slate-400 ml-auto">{reactLog.length} events</span>
-                        </div>
-                        <div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">
-                          {reactLog.length === 0 ? (
-                            <div className="flex items-center gap-2 text-slate-400 animate-pulse">
-                              <span>⏳</span><span>{workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : 'Initializing ReAct loop...'}</span>
-                            </div>
-                          ) : reactLog.slice(-20).map((ev, i) => (
-                            <div key={i} className={`flex items-start gap-2 py-1 px-2 rounded ${
-                              ev.icon === '🔍' || ev.icon === '📚' || ev.icon === '🔢' ? 'bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300' :
-                              ev.icon === '✅' || ev.icon === '🎉' ? 'bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300' :
-                              ev.icon === '❌' || ev.icon === '⚠️' ? 'bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400' :
-                              'text-slate-600 dark:text-slate-400'
-                            }`}>
-                              <span className="shrink-0">{ev.icon}</span>
-                              <span className="break-all leading-relaxed">
-                                <span className="text-slate-400 mr-1">[{ev.time}]</span>
-                                {ev.msg}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <IconLoader className="text-primary dark:text-secondary" />
-                        <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
-                          {workflowState === 'search' ? t.status_search
-                            : workflowState === 'rag' ? t.status_rag
-                            : workflowState === 'agent1' ? t.skeleton_agent1
-                            : workflowState === 'agent2' ? t.skeleton_agent2
-                            : workflowState === 'agent3' ? t.skeleton_agent3
-                            : t.status_saving}
-                        </span>
-                      </div>
-                    )}
-                    {/* Skeleton bars */}
-                    <div className="mt-3 space-y-2 animate-pulse">
-                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
-                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div>
-                    </div>
-                  </div>
-                )}
+                {workflowState === 'idle' && <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60"><p className="font-medium text-lg">{t.report_placeholder_title}</p><p className="text-sm mt-2">{t.report_placeholder_desc}</p></div>}
+                {ragContext && !['idle','error'].includes(workflowState) && <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm"><strong className="block mb-1">🔍 [{t.rag_label}]:</strong><span className="opacity-90 text-xs whitespace-pre-wrap">{ragContext.length > 800 ? ragContext.substring(0,800) + '...' : ragContext}</span></div>}
+                {reports.agent1 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div><div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent1)}} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
+                {reports.agent2 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div><div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent2)}} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
+                {reports.agent3 && <div className="mb-6 animate-fade-in"><div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div><div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent3)}} /></div>}
+                {['search','rag','agent1','agent2','agent3','saving'].includes(workflowState) && <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 shadow-sm animate-fade-in">{canSeeTrace ? <><div className="flex items-center gap-3 mb-3"><IconLoader /><span className="text-sm font-bold text-primary dark:text-secondary">Single-Pass Agent Live Trace</span><span className="text-xs text-slate-400 ml-auto">{reactLog.length} events</span></div><div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">{reactLog.length === 0 ? <div className="flex items-center gap-2 text-slate-400 animate-pulse"><span>⏳</span><span>Initializing single-pass flow...</span></div> : reactLog.slice(-20).map((ev, i) => <div key={i} className="flex items-start gap-2 py-1 px-2 rounded bg-white dark:bg-slate-900/50"><span>{ev.icon}</span><span>{ev.msg}</span></div>)}</div></> : <div className="flex items-center gap-2 text-slate-400"><IconLoader /> {workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : t.status_thinking}</div>}</div>}
               </div>
             </div>
           </div>
         )}
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white dark:bg-[#0a0a0a] border-t border-slate-200 dark:border-slate-800 mt-12 py-10 shrink-0">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-          <div className="flex flex-col gap-3 max-w-md">
-            <div className="flex items-center gap-2 text-primary dark:text-secondary cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => window.scrollTo({top:0,behavior:'smooth'})}>
-              <IconBot /><span className="font-black text-2xl tracking-wider">{t.brand}</span>
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{t.footer_desc}</p>
-          </div>
-          <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-bold text-slate-600 dark:text-slate-300">
-            <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_home}</a>
-            <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_about}</a>
-            <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_contact}</a>
-            <a href="#" className="hover:text-primary dark:hover:text-secondary transition-colors">{t.menu_privacy}</a>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto px-6 mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <p className="font-medium bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{t.footer_version}</p>
-            <p className="hidden md:block">|</p>
-            <p>{t.footer_rights}</p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <p>{t.architect_label} <a href={t.architect_url} target="_blank" rel="noreferrer" className="font-bold hover:text-primary dark:hover:text-secondary underline transition-colors">{t.architect_name}</a></p>
-            <button onClick={() => window.scrollTo({top:0,behavior:'smooth'})}
-              className="flex items-center gap-1 font-bold hover:text-primary dark:hover:text-secondary transition-colors bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-full shadow-sm sm:ml-2">
-              Top <IconArrowUp />
-            </button>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
