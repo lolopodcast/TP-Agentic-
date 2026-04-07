@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-Hant-TW">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
 <title>AI 企業策略協同工作站 — SMMC</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
@@ -13,40 +13,44 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
+window.onerror = function(message, source, lineno, colno, error) {
+  console.error('Global script error:', { message, source, lineno, colno, error });
+};
+
 tailwind.config = {
   darkMode: 'class',
   theme: {
     extend: {
       colors: { primary: '#004030', secondary: '#D8C3A5' },
-      fontFamily: { sans: ['Inter','sans-serif'], serif: ['Merriweather','serif'] }
+      fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Merriweather', 'serif'] }
     }
   }
-}
+};
 </script>
 <style>
-@keyframes fadeInUp { from{opacity:0;transform:translateY(15px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 .dark ::-webkit-scrollbar-thumb { background: #475569; }
-.markdown-body h1 { font-size:1.5rem;font-weight:700;color:#004030;margin-top:1.5rem;margin-bottom:0.75rem; }
-.dark .markdown-body h1 { color:#D8C3A5; }
-.markdown-body h2 { font-size:1.25rem;font-weight:700;color:#004030;margin-top:1.25rem;margin-bottom:0.5rem; }
-.dark .markdown-body h2 { color:#D8C3A5; }
-.markdown-body h3 { font-size:1.125rem;font-weight:600;color:#004030;margin-top:1rem;margin-bottom:0.5rem; }
-.dark .markdown-body h3 { color:#D8C3A5; }
-.markdown-body p { margin-bottom:1rem;line-height:1.6; }
-.markdown-body ul { list-style-type:disc;margin-left:1.5rem;margin-bottom:1rem; }
-.markdown-body ol { list-style-type:decimal;margin-left:1.5rem;margin-bottom:1rem; }
-.markdown-body li { margin-bottom:0.25rem; }
-.markdown-body strong { font-weight:600;color:#1f2937; }
-.dark .markdown-body strong { color:#f3f4f6; }
-.markdown-body table { border-collapse:collapse;width:100%;margin-bottom:1rem; }
-.markdown-body th,.markdown-body td { border:1px solid #e2e8f0;padding:0.5rem 0.75rem;text-align:left;font-size:0.875rem; }
-.dark .markdown-body th,.dark .markdown-body td { border-color:#475569; }
-.markdown-body th { background:#f8fafc;font-weight:600; }
-.dark .markdown-body th { background:#1e293b; }
+.markdown-body h1 { font-size: 1.5rem; font-weight: 700; color: #004030; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+.dark .markdown-body h1 { color: #D8C3A5; }
+.markdown-body h2 { font-size: 1.25rem; font-weight: 700; color: #004030; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+.dark .markdown-body h2 { color: #D8C3A5; }
+.markdown-body h3 { font-size: 1.125rem; font-weight: 600; color: #004030; margin-top: 1rem; margin-bottom: 0.5rem; }
+.dark .markdown-body h3 { color: #D8C3A5; }
+.markdown-body p { margin-bottom: 1rem; line-height: 1.6; }
+.markdown-body ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+.markdown-body ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+.markdown-body li { margin-bottom: 0.25rem; }
+.markdown-body strong { font-weight: 600; color: #1f2937; }
+.dark .markdown-body strong { color: #f3f4f6; }
+.markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+.markdown-body th, .markdown-body td { border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; text-align: left; font-size: 0.875rem; }
+.dark .markdown-body th, .dark .markdown-body td { border-color: #475569; }
+.markdown-body th { background: #f8fafc; font-weight: 600; }
+.dark .markdown-body th { background: #1e293b; }
 </style>
 </head>
 <body class="bg-[#f4f4f4] dark:bg-[#121212] text-slate-800 dark:text-slate-200 font-sans transition-colors min-h-screen selection:bg-[#004030] selection:text-white dark:selection:bg-[#D8C3A5] dark:selection:text-[#004030]">
@@ -65,6 +69,14 @@ function friendlyHttpError(status, payload = {}) {
   return msg || `HTTP ${status}`;
 }
 
+function safeParseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 const api = async (action, data = {}, token = '') => {
   const resp = await fetch(API_BASE + '/api', {
     method: 'POST',
@@ -72,11 +84,11 @@ const api = async (action, data = {}, token = '') => {
     body: JSON.stringify({ action, token, ...data }),
   });
 
-  let payload = null;
-  try { payload = await resp.json(); } catch {}
+  const raw = await resp.text();
+  const payload = safeParseJson(raw) || {};
 
   if (!resp.ok) {
-    throw new Error(friendlyHttpError(resp.status, payload || {}));
+    throw new Error(friendlyHttpError(resp.status, payload));
   }
   return payload;
 };
@@ -89,9 +101,13 @@ const apiSSE = async (data, token, onEvent) => {
   });
 
   if (!resp.ok) {
-    let payload = null;
-    try { payload = await resp.json(); } catch {}
-    throw new Error(friendlyHttpError(resp.status, payload || {}));
+    const raw = await resp.text();
+    const payload = safeParseJson(raw) || {};
+    throw new Error(friendlyHttpError(resp.status, payload));
+  }
+
+  if (!resp.body) {
+    throw new Error('SSE response body is empty.');
   }
 
   const reader = resp.body.getReader();
@@ -104,19 +120,17 @@ const apiSSE = async (data, token, onEvent) => {
     if (done) return result;
 
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
+    const chunks = buffer.split('\n\n');
+    buffer = chunks.pop() || '';
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const evt = JSON.parse(line.slice(6));
-        if (evt.type === 'react_complete') result = evt;
-        if (evt.type === 'react_fatal') throw new Error(evt.error || 'Analyze failed');
-        if (evt.type !== 'stream_end') onEvent(evt);
-      } catch (err) {
-        if (err instanceof Error) throw err;
-      }
+    for (const chunk of chunks) {
+      const line = chunk.split('\n').find(l => l.startsWith('data: '));
+      if (!line) continue;
+      const evt = safeParseJson(line.slice(6));
+      if (!evt) continue;
+      if (evt.type === 'react_complete') result = evt;
+      if (evt.type === 'react_fatal') throw new Error(evt.error || 'Analyze failed');
+      if (evt.type !== 'stream_end' && typeof onEvent === 'function') onEvent(evt);
     }
   }
 };
@@ -125,15 +139,15 @@ const IconBot = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height=
 const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const IconLoader = () => <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>;
 const IconAlert = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
-const IconMoon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>;
-const IconSun = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>;
-const IconDownload = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>;
-const IconLink = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>;
-const IconMenu = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>;
-const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
-const IconChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
-const IconChevronUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>;
-const IconBookOpen = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>;
+const IconMoon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+const IconSun = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+const IconDownload = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+const IconLink = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
+const IconMenu = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>;
+const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+const IconChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>;
+const IconChevronUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>;
+const IconBookOpen = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>;
 const IconHistory = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
 const IconLogOut = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
@@ -142,87 +156,104 @@ const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" heig
 const dict = {
   zh: {
     brand: 'SMMC',
-    title: '國際企業策略研究與執行', subtitle: 'AI 協同工作站',
+    title: '國際企業策略研究與執行',
+    subtitle: 'AI 協同工作站',
     title_en_sub: 'Strategy Research and Deployment for MNCs',
     smmc_hub: '分析 TP0-TP3 基礎知識與技能，乃通過 SMMC 雙語互動學習 Hub',
     start_btn: '啟動 Single-Pass 分析',
     ph_company: '請輸入企業名稱 (例: 台積電, 捷安特...)',
-    opt_news: '自動蒐集網路新聞 (即時檢索)', opt_ir: '深度檢索官網 / 投資人關係 (IR)',
+    opt_news: '自動蒐集網路新聞 (即時檢索)',
+    opt_ir: '深度檢索官網 / 投資人關係 (IR)',
     opt_file: '連接 Database / 匯入多元文件',
     export_btn: '匯出分析報告 (.md)',
     agent1: 'Agent 1: 產業與環境分析師 (TP0-TP1)',
     agent2: 'Agent 2: 資源與能耐精算師 (TP2)',
     agent3: 'Agent 3: 集團策略長 (TP3)',
-    status_idle: '等待指示', status_search: '🔍 線上搜尋企業資料...',
-    status_rag: '🔍 檢索企業知識庫...', status_thinking: '🧠 Single-Pass 生成中...',
-    status_done: '✅ 完成', status_saving: '💾 儲存報告...',
-    err_empty: '請輸入企業名稱', err_api: '發生錯誤，請稍後再試。',
-    login_title: 'Token 驗證', login_ph: '請輸入存取 Token',
-    login_btn: '驗證登入', login_err: 'Token 錯誤，請重試',
+    status_idle: '等待指示',
+    status_search: '🔍 線上搜尋企業資料...',
+    status_rag: '🔍 檢索企業知識庫...',
+    status_thinking: '🧠 Single-Pass 生成中...',
+    status_done: '✅ 完成',
+    err_empty: '請輸入企業名稱',
+    err_api: '發生錯誤，請稍後再試。',
+    login_title: 'Token 驗證',
+    login_ph: '請輸入存取 Token',
+    login_btn: '驗證登入',
+    login_err: 'Token 錯誤，請重試',
     login_hint: '請向授課教師取得存取 Token',
-    logout: '登出', history_title: '歷史報告', history_empty: '尚無歷史報告',
-    history_load: '載入報告', history_search_ph: '搜尋企業名稱...',
-    tab_new: '新分析', tab_history: '歷史報告',
-    news_years: '檢索範圍：過去', news_years_suffix: '年內',
+    logout: '登出',
+    history_title: '歷史報告',
+    history_empty: '尚無歷史報告',
+    history_load: '載入報告',
+    history_search_ph: '搜尋企業名稱...',
+    tab_new: '新分析',
+    tab_history: '歷史報告',
+    news_years: '檢索範圍：過去',
+    news_years_suffix: '年內',
     file_support: '支援 PDF, Word, Excel, PPT, TXT, MD, CSV 等格式',
     data_source_title: '資料來源設定',
     reminders_title: 'TP0~TP3 分析架構參考',
-    footer_version: 'Version 2.2.0 (2026.04) — Single-Pass Edition',
-    report_saved: '報告已儲存至雲端資料庫', processing: '協同處理中...',
+    report_saved: '報告已儲存至雲端資料庫',
+    processing: '協同處理中...',
     report_placeholder_title: '請在左側輸入企業名稱啟動分析',
     report_placeholder_desc: '各 Agent 將在此依序呈現 single-pass 報告結果',
     rag_label: 'Context Injected from Knowledge Base',
     reminders: [
-      { id:'tp0', title:'TP0: 企業背景與概況', items:[
-        '定義企業的基本面貌與發展軌跡，包含創立背景、核心願景 (Vision) 與使命 (Mission)。',
-        '檢視近三到五年的財務表現概況（如營收規模、毛利率、EPS 等），以確立後續策略分析的基準點與企業目前的生命週期階段。'
-      ]},
-      { id:'tp1', title:'TP1: 總體環境與產業分析', items:[
-        'PESTEL 分析、五力分析、產業價值鏈與生命週期定位。',
-        '以 4P 歸納企業目前的 Position、Priority、Posture 與 Profit potential。'
-      ]},
-      { id:'tp2', title:'TP2: 資源與能耐精算', items:[
-        '企業價值鏈、VRIN 核心能耐評估、動態能力 (Dynamic Capabilities)。'
-      ]},
-      { id:'tp3', title:'TP3: 集團策略與未來發展', items:[
-        '垂直整合、多角化、地理擴張、ESG、治理與未來建議。'
-      ]}
+      { id: 'tp0', title: 'TP0: 企業背景與概況', items: ['企業背景、願景使命、近年財務基準。'] },
+      { id: 'tp1', title: 'TP1: 總體環境與產業分析', items: ['PESTEL、五力、價值鏈、生命週期與 4P。'] },
+      { id: 'tp2', title: 'TP2: 資源與能耐精算', items: ['價值鏈、VRIN、動態能力。'] },
+      { id: 'tp3', title: 'TP3: 集團策略與未來發展', items: ['垂直整合、多角化、地理擴張、ESG 與建議。'] }
     ]
   },
   en: {
     brand: 'SMMC',
-    title: 'Strategy Research and Deployment for MNCs', subtitle: 'AI Collaborative Workspace',
+    title: 'Strategy Research and Deployment for MNCs',
+    subtitle: 'AI Collaborative Workspace',
     title_en_sub: '國際企業策略研究與執行',
     smmc_hub: 'TP0-TP3 foundational knowledge is acquired via SMMC Executive Hub',
     start_btn: 'Start Single-Pass Analysis',
     ph_company: 'Enter Company Name (e.g., TSMC, Giant...)',
-    opt_news: 'Auto-collect Web News (Real-time)', opt_ir: 'Deep Search Official Site / IR pages',
-    opt_file: 'Connect Database / Import Files', export_btn: 'Export Report (.md)',
+    opt_news: 'Auto-collect Web News (Real-time)',
+    opt_ir: 'Deep Search Official Site / IR pages',
+    opt_file: 'Connect Database / Import Files',
+    export_btn: 'Export Report (.md)',
     agent1: 'Agent 1: Macro & Industry Analyst (TP0-TP1)',
     agent2: 'Agent 2: Resources & Capabilities (TP2)',
     agent3: 'Agent 3: Corporate Strategy & Future (TP3)',
-    status_idle: 'Awaiting input', status_search: '🔍 Searching company data online...',
-    status_rag: '🔍 Retrieving knowledge...', status_thinking: '🧠 Generating in single-pass...',
-    status_done: '✅ Done', status_saving: '💾 Saving report...',
-    err_empty: 'Please enter a company name.', err_api: 'An error occurred, please try again.',
-    login_title: 'Token Verification', login_ph: 'Enter access token',
-    login_btn: 'Verify & Login', login_err: 'Invalid token, please retry',
-    login_hint: 'Please obtain the access token from your instructor', logout: 'Logout',
-    history_title: 'Report History', history_empty: 'No reports yet', history_load: 'Load Report', history_search_ph: 'Search company name...',
-    tab_new: 'New Analysis', tab_history: 'Report History',
-    news_years: 'Search range: past', news_years_suffix: 'years',
+    status_idle: 'Awaiting input',
+    status_search: '🔍 Searching company data online...',
+    status_rag: '🔍 Retrieving knowledge...',
+    status_thinking: '🧠 Generating in single-pass...',
+    status_done: '✅ Done',
+    err_empty: 'Please enter a company name.',
+    err_api: 'An error occurred, please try again.',
+    login_title: 'Token Verification',
+    login_ph: 'Enter access token',
+    login_btn: 'Verify & Login',
+    login_err: 'Invalid token, please retry',
+    login_hint: 'Please obtain the access token from your instructor',
+    logout: 'Logout',
+    history_title: 'Report History',
+    history_empty: 'No reports yet',
+    history_load: 'Load Report',
+    history_search_ph: 'Search company name...',
+    tab_new: 'New Analysis',
+    tab_history: 'Report History',
+    news_years: 'Search range: past',
+    news_years_suffix: 'years',
     file_support: 'Supports PDF, Word, Excel, PPT, TXT, MD, CSV',
-    data_source_title: 'Data Source Settings', reminders_title: 'TP0~TP3 Framework Reference',
-    footer_version: 'Version 2.2.0 (Apr 2026) — Single-Pass Edition',
-    report_saved: 'Report saved to cloud database', processing: 'Processing...',
+    data_source_title: 'Data Source Settings',
+    reminders_title: 'TP0~TP3 Framework Reference',
+    report_saved: 'Report saved to cloud database',
+    processing: 'Processing...',
     report_placeholder_title: 'Enter a company name on the left to begin',
     report_placeholder_desc: 'Agent reports will be presented here sequentially in single-pass mode',
     rag_label: 'Context Injected from Knowledge Base',
     reminders: [
-      { id:'tp0', title:'TP0: Background & Overview', items:['Founding background, mission, vision, and financial baseline.']},
-      { id:'tp1', title:'TP1: Macro & Industry Analysis', items:['PESTEL, Five Forces, value chain, life cycle, 4P summary.']},
-      { id:'tp2', title:'TP2: Resources & Capabilities', items:['Value chain, VRIN, dynamic capabilities.']},
-      { id:'tp3', title:'TP3: Corporate Strategy & Future', items:['VI, diversification, geographic expansion, governance, ESG, recommendations.']}
+      { id: 'tp0', title: 'TP0: Background & Overview', items: ['Background, mission, vision, and financial baseline.'] },
+      { id: 'tp1', title: 'TP1: Macro & Industry Analysis', items: ['PESTEL, Five Forces, value chain, life cycle, 4P summary.'] },
+      { id: 'tp2', title: 'TP2: Resources & Capabilities', items: ['Value chain, VRIN, dynamic capabilities.'] },
+      { id: 'tp3', title: 'TP3: Corporate Strategy & Future', items: ['VI, diversification, geographic expansion, ESG, recommendations.'] }
     ]
   }
 };
@@ -237,22 +268,30 @@ function LoginScreen({ onLogin, lang, setLang }) {
   const groups = ['G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'];
 
   useEffect(() => {
-    if (isDark) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
+    document.documentElement.classList.toggle('dark', isDark);
   }, [isDark]);
 
   const handleLogin = async () => {
     if (!token.trim()) return;
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       const res = await api('auth', { token });
       if (res.ok) {
         const role = res.role || 'student';
         const finalGroup = role === 'student' ? group : (res.group || '');
-        if (role === 'student' && !group) { setError(lang==='zh'?'請選擇組別':'Please select a group'); setLoading(false); return; }
+        if (role === 'student' && !group) {
+          setError(lang === 'zh' ? '請選擇組別' : 'Please select a group');
+          setLoading(false);
+          return;
+        }
         onLogin(token, role, finalGroup, res.label || '');
-      } else setError(res.error || t.login_err);
-    } catch(e) { setError(e.message || t.login_err); }
+      } else {
+        setError(res.error || t.login_err);
+      }
+    } catch (e) {
+      setError(e.message || t.login_err);
+    }
     setLoading(false);
   };
 
@@ -260,7 +299,10 @@ function LoginScreen({ onLogin, lang, setLang }) {
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#f4f4f4] dark:bg-[#121212]">
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-3 mb-4"><div className="p-3 bg-primary/10 dark:bg-secondary/10 rounded-xl"><IconBot /></div><span className="font-serif font-black text-3xl tracking-widest text-primary dark:text-secondary">{t.brand}</span></div>
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="p-3 bg-primary/10 dark:bg-secondary/10 rounded-xl"><IconBot /></div>
+            <span className="font-serif font-black text-3xl tracking-widest text-primary dark:text-secondary">{t.brand}</span>
+          </div>
           <h1 className="font-serif font-bold text-xl text-primary dark:text-secondary">{t.title}</h1>
           <p className="text-sm text-slate-500 mt-1">{t.subtitle}</p>
         </div>
@@ -268,9 +310,9 @@ function LoginScreen({ onLogin, lang, setLang }) {
           <div className="flex items-center gap-3 mb-6"><IconLock /><h2 className="font-serif font-bold text-lg text-primary dark:text-secondary">{t.login_title}</h2></div>
           <input type="password" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder={t.login_ph} className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white mb-4" />
           <div className="mb-4">
-            <label className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1 block">{lang==='zh'?'組別 (學生必選)':'Group (required for students)'}</label>
+            <label className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1 block">{lang === 'zh' ? '組別 (學生必選)' : 'Group (required for students)'}</label>
             <select value={group} onChange={e => setGroup(e.target.value)} className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none dark:text-white">
-              <option value="">{lang==='zh'?'— 請選擇組別 —':'— Select group —'}</option>
+              <option value="">{lang === 'zh' ? '— 請選擇組別 —' : '— Select group —'}</option>
               {groups.map(g => <option key={g} value={g}>{g}</option>)}
               <option value="TA">TA</option>
               <option value="Professor">Professor</option>
@@ -295,7 +337,6 @@ function App() {
   const [userGroup, setUserGroup] = useState(() => sessionStorage.getItem('smmc_group') || '');
   const [lang, setLang] = useState('zh');
   const [isDark, setIsDark] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [company, setCompany] = useState('');
   const [optNews, setOptNews] = useState(true);
   const [newsYears, setNewsYears] = useState(3);
@@ -307,40 +348,43 @@ function App() {
   const [workflowState, setWorkflowState] = useState('idle');
   const [ragContext, setRagContext] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [reports, setReports] = useState({ agent1:'', agent2:'', agent3:'' });
+  const [reports, setReports] = useState({ agent1: '', agent2: '', agent3: '' });
   const [savedMsg, setSavedMsg] = useState('');
   const [reactLog, setReactLog] = useState([]);
-  const [traces, setTraces] = useState({ agent1: [], agent2: [], agent3: [] });
   const [historyList, setHistoryList] = useState([]);
   const [historySearch, setHistorySearch] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [viewingReport, setViewingReport] = useState(null);
 
   const t = dict[lang];
   const isAdmin = userRole === 'admin';
   const isTA = userRole === 'ta';
   const canSeeTrace = isAdmin || isTA;
   const canExport = isAdmin;
-  const isWorking = !['idle','done','error'].includes(workflowState);
+  const isWorking = !['idle', 'done', 'error'].includes(workflowState);
 
   useEffect(() => {
-    if (isDark) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
+    document.documentElement.classList.toggle('dark', isDark);
   }, [isDark]);
 
   useEffect(() => {
-    if (activeTab === 'history' && authToken) loadHistory();
+    if (activeTab === 'history' && authToken) {
+      loadHistory();
+    }
   }, [activeTab]);
 
   const handleLogin = (token, role, group) => {
-    setAuthToken(token); setUserRole(role); setUserGroup(group);
+    setAuthToken(token);
+    setUserRole(role);
+    setUserGroup(group);
     sessionStorage.setItem('smmc_token', token);
     sessionStorage.setItem('smmc_role', role);
     sessionStorage.setItem('smmc_group', group);
   };
 
   const handleLogout = () => {
-    setAuthToken(''); setUserRole(''); setUserGroup('');
+    setAuthToken('');
+    setUserRole('');
+    setUserGroup('');
     sessionStorage.removeItem('smmc_token');
     sessionStorage.removeItem('smmc_role');
     sessionStorage.removeItem('smmc_group');
@@ -351,7 +395,9 @@ function App() {
     try {
       const res = await api('list_reports', { company: historySearch || undefined, role: userRole, group: userGroup }, authToken);
       if (res.ok) setHistoryList(res.reports || []);
-    } catch (err) {}
+    } catch (err) {
+      console.error(err);
+    }
     setHistoryLoading(false);
   };
 
@@ -359,30 +405,36 @@ function App() {
     try {
       const res = await api('get_report', { reportId }, authToken);
       if (res.ok && res.report) {
-        setViewingReport(res.report);
-        setReports({ agent1: res.report.agent1, agent2: res.report.agent2, agent3: res.report.agent3 });
-        setCompany(res.report.company);
+        setReports({ agent1: res.report.agent1 || '', agent2: res.report.agent2 || '', agent3: res.report.agent3 || '' });
+        setCompany(res.report.company || '');
         setRagContext(res.report.rag_context || '');
         setWorkflowState('done');
         setActiveTab('new');
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleFileUpload = (e) => {
     const SUPPORTED_EXT = /\.(txt|md|csv|json|pdf|docx?|xlsx?|pptx?)$/i;
-    const allFiles = Array.from(e.target.files);
-    const files = allFiles.filter(f => SUPPORTED_EXT.test(f.name));
-    if (!files.length) { setUploadedFiles([]); return; }
-    const filePromises = files.map(file => new Promise((resolve) => {
+    const files = Array.from(e.target.files || []).filter(f => SUPPORTED_EXT.test(f.name));
+    if (!files.length) {
+      setUploadedFiles([]);
+      return;
+    }
+
+    const promises = files.map(file => new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const base64 = ev.target.result.split(',')[1];
+        const result = typeof ev.target?.result === 'string' ? ev.target.result : '';
+        const base64 = result.includes(',') ? result.split(',')[1] : '';
         resolve({ fileName: file.name, fileType: file.type || 'application/octet-stream', fileBase64: base64 });
       };
       reader.readAsDataURL(file);
     }));
-    Promise.all(filePromises).then(results => setUploadedFiles(prev => [...prev, ...results]));
+
+    Promise.all(promises).then(setUploadedFiles);
   };
 
   const exportReport = () => {
@@ -390,105 +442,132 @@ function App() {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `${company}_SMMC策略分析報告.md`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    a.href = url;
+    a.download = `${company || 'report'}_SMMC策略分析報告.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const runWorkflow = async () => {
-    if (!company.trim()) { setErrorMsg(t.err_empty); return; }
-    setErrorMsg(''); setSavedMsg(''); setViewingReport(null);
-    setReports({ agent1:'', agent2:'', agent3:'' });
-    setReactLog([]); setTraces({ agent1: [], agent2: [], agent3: [] });
-    const collectedReports = { agent1:'', agent2:'', agent3:'' };
-    const collectedTraces = { agent1: [], agent2: [], agent3: [] };
-    const addLog = (icon, msg) => setReactLog(prev => [...prev, { time: new Date().toLocaleTimeString(), icon, msg }]);
+    if (!company.trim()) {
+      setErrorMsg(t.err_empty);
+      return;
+    }
 
+    setErrorMsg('');
+    setSavedMsg('');
+    setReports({ agent1: '', agent2: '', agent3: '' });
+    setReactLog([]);
+
+    const addLog = (icon, msg) => setReactLog(prev => [...prev, { time: new Date().toLocaleTimeString(), icon, msg }]);
     const handleEvent = (evt) => {
-      switch(evt.type) {
+      switch (evt.type) {
         case 'react_thinking': addLog('🧠', `${evt.agentId} — single-pass 生成中...`); break;
         case 'react_action': addLog('⚙️', `${evt.agentId} → ${evt.action}`); break;
         case 'react_finish': addLog('✅', `${evt.agentId} — 生成完成`); break;
         case 'react_error': addLog('⚠️', `${evt.agentId} — ${evt.error}`); break;
+        default: break;
       }
     };
 
     try {
       if (optNews || optIR) {
         setWorkflowState('search');
-        addLog('🌐', lang==='zh'?`線上搜尋「${company}」資料中...`:`Searching "${company}" online...`);
+        addLog('🌐', lang === 'zh' ? `線上搜尋「${company}」資料中...` : `Searching "${company}" online...`);
         await api('search', { company, optNews, newsYears, optIR, lang }, authToken);
       }
 
       if (optFile && uploadedFiles.length > 0) {
-        addLog('📎', lang==='zh'?`上傳 ${uploadedFiles.length} 個檔案...`:`Uploading ${uploadedFiles.length} files...`);
+        addLog('📎', lang === 'zh' ? `上傳 ${uploadedFiles.length} 個檔案...` : `Uploading ${uploadedFiles.length} files...`);
         for (const f of uploadedFiles) {
           try {
             await api('file_upload', { company, fileName: f.fileName, fileType: f.fileType, fileBase64: f.fileBase64 }, authToken);
-            addLog('✅', `${f.fileName} ${lang==='zh'?'解析完成':'parsed'}`);
+            addLog('✅', `${f.fileName} ${lang === 'zh' ? '解析完成' : 'parsed'}`);
           } catch (err) {
-            addLog('⚠️', `${f.fileName} ${lang==='zh'?'解析失敗':'failed'}: ${err.message}`);
+            addLog('⚠️', `${f.fileName} ${lang === 'zh' ? '解析失敗' : 'failed'}: ${err.message}`);
           }
         }
       }
 
       setWorkflowState('rag');
-      addLog('🔍', lang==='zh'?'檢索知識庫...':'Retrieving knowledge base...');
+      addLog('🔍', lang === 'zh' ? '檢索知識庫...' : 'Retrieving knowledge base...');
       const ragRes = await api('rag_retrieve', { company }, authToken);
-      const context = ragRes.context || (lang==='zh'?'知識庫無相符資料。':'No data found in KB.');
+      const context = ragRes.context || (lang === 'zh' ? '知識庫無相符資料。' : 'No data found in KB.');
       setRagContext(context);
 
-      const langStr = lang==='zh'?'繁體中文（台灣用語）':'English';
+      const langStr = lang === 'zh' ? '繁體中文（台灣用語）' : 'English';
       let optPrompt = '';
       if (optNews) optPrompt += `\n- 著重整合過去 ${newsYears} 年新聞與市場動態。`;
-      if (optIR) optPrompt += `\n- 著重官方網站與 IR 公開資訊。`;
+      if (optIR) optPrompt += '\n- 著重官方網站與 IR 公開資訊。';
 
       setWorkflowState('agent1');
       addLog('🚀', 'Agent 1 single-pass 啟動');
       const r1 = await apiSSE({
-        company, agentId: 'agent1', agentRole: '資深總體經濟與產業分析師',
-        taskPrompt: `分析對象: ${company。replace?.('', '') || company}\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
+        company,
+        agentId: 'agent1',
+        agentRole: '資深總體經濟與產業分析師',
+        taskPrompt: `分析對象: ${company}\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
-      if (r1) { collectedReports.agent1 = r1.report; collectedTraces.agent1 = r1.trace || []; setReports(prev => ({...prev, agent1: r1.report})); setTraces(prev => ({...prev, agent1: r1.trace || []})); }
+      if (r1) setReports(prev => ({ ...prev, agent1: r1.report || '' }));
 
       setWorkflowState('agent2');
       addLog('🚀', 'Agent 2 single-pass 啟動');
       const r2 = await apiSSE({
-        company, agentId: 'agent2', agentRole: '資深企業資源與價值鏈精算師',
-        taskPrompt: `分析對象: ${company}\n【Agent 1 摘要】：${(collectedReports.agent1||'').substring(0,1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
+        company,
+        agentId: 'agent2',
+        agentRole: '資深企業資源與價值鏈精算師',
+        taskPrompt: `分析對象: ${company}\n【Agent 1 摘要】：${(r1?.report || '').substring(0, 1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
-      if (r2) { collectedReports.agent2 = r2.report; collectedTraces.agent2 = r2.trace || []; setReports(prev => ({...prev, agent2: r2.report})); setTraces(prev => ({...prev, agent2: r2.trace || []})); }
+      if (r2) setReports(prev => ({ ...prev, agent2: r2.report || '' }));
 
       setWorkflowState('agent3');
       addLog('🚀', 'Agent 3 single-pass 啟動');
       const r3 = await apiSSE({
-        company, agentId: 'agent3', agentRole: '頂尖集團策略長 (CSO)',
-        taskPrompt: `分析對象: ${company}\n【Agent 1 摘要】：${(collectedReports.agent1||'').substring(0,1000)}...\n【Agent 2 摘要】：${(collectedReports.agent2||'').substring(0,1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
+        company,
+        agentId: 'agent3',
+        agentRole: '頂尖集團策略長 (CSO)',
+        taskPrompt: `分析對象: ${company}\n【Agent 1 摘要】：${(r1?.report || '').substring(0, 1000)}...\n【Agent 2 摘要】：${(r2?.report || '').substring(0, 1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
-      if (r3) { collectedReports.agent3 = r3.report; collectedTraces.agent3 = r3.trace || []; setReports(prev => ({...prev, agent3: r3.report})); setTraces(prev => ({...prev, agent3: r3.trace || []})); }
+      if (r3) setReports(prev => ({ ...prev, agent3: r3.report || '' }));
 
       setWorkflowState('saving');
-      addLog('💾', lang==='zh'?'儲存報告至雲端...':'Saving report...');
-      await api('save_report', { company, lang, ownerGroup: userGroup, ownerRole: userRole, agent1: collectedReports.agent1, agent2: collectedReports.agent2, agent3: collectedReports.agent3, agent1Trace: collectedTraces.agent1, agent2Trace: collectedTraces.agent2, agent3Trace: collectedTraces.agent3, ragContext: context, options: { optNews, newsYears, optIR, optFile } }, authToken);
+      addLog('💾', lang === 'zh' ? '儲存報告至雲端...' : 'Saving report...');
+      await api('save_report', {
+        company,
+        lang,
+        ownerGroup: userGroup,
+        ownerRole: userRole,
+        agent1: r1?.report || '',
+        agent2: r2?.report || '',
+        agent3: r3?.report || '',
+        agent1Trace: r1?.trace || [],
+        agent2Trace: r2?.trace || [],
+        agent3Trace: r3?.trace || [],
+        ragContext: context,
+        options: { optNews, newsYears, optIR, optFile },
+      }, authToken);
+
       setSavedMsg(t.report_saved);
-      addLog('🎉', lang==='zh'?'全部完成！':'All done!');
+      addLog('🎉', lang === 'zh' ? '全部完成！' : 'All done!');
       setWorkflowState('done');
     } catch (err) {
-      setErrorMsg((t.err_api || '') + ' ' + (err.message || ''));
+      setErrorMsg(`${t.err_api} ${err.message || ''}`.trim());
       addLog('❌', err.message || 'Error');
       setWorkflowState('error');
     }
   };
 
   const getStatusUI = (agentState) => {
-    const states = ['idle','search','rag','agent1','agent2','agent3','saving','done','error'];
+    const states = ['idle', 'search', 'rag', 'agent1', 'agent2', 'agent3', 'saving', 'done', 'error'];
     const curIdx = states.indexOf(workflowState);
     const agtIdx = states.indexOf(agentState);
     if (workflowState === 'error') return <span className="text-red-500 text-sm">暫停</span>;
-    if (curIdx > agtIdx) return <span className="text-green-600 dark:text-green-400 font-bold flex items-center gap-1"><IconCheck/> {t.status_done}</span>;
-    if (curIdx === agtIdx) return <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1"><IconLoader/> {t.status_thinking}</span>;
+    if (curIdx > agtIdx) return <span className="text-green-600 dark:text-green-400 font-bold flex items-center gap-1"><IconCheck /> {t.status_done}</span>;
+    if (curIdx === agtIdx) return <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1"><IconLoader /> {t.status_thinking}</span>;
     return <span className="text-slate-400 text-sm">{t.status_idle}</span>;
   };
 
@@ -498,7 +577,7 @@ function App() {
     <div className="flex flex-col h-full min-h-screen">
       <header className="sticky top-0 z-50 bg-primary text-white shadow-md border-b border-secondary/30">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({top:0,behavior:'smooth'})}>
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <div className="p-2 bg-secondary/20 rounded-lg hidden sm:block group-hover:bg-secondary/40 transition-colors"><IconBot /></div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2"><span className="font-black text-xl tracking-wider text-white group-hover:text-secondary transition-colors">{t.brand}</span><span className="hidden md:inline-block w-px h-4 bg-secondary/50"></span><span className="text-[10px] sm:text-xs text-secondary/90 font-medium px-2 py-0.5 bg-secondary/10 rounded-full border border-secondary/20">{t.subtitle}</span></div>
@@ -507,29 +586,37 @@ function App() {
           </div>
           <div className="hidden md:flex items-center gap-2">
             <a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-secondary/80 hover:text-white transition-colors mr-2 border border-secondary/30 px-2 py-1 rounded"><IconLink /> SMMC Hub</a>
-            <button onClick={() => setLang(l => l==='zh'?'en':'zh')} className="px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors">{lang==='zh'?'EN':'中文'}</button>
-            <button onClick={() => setIsDark(d=>!d)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">{isDark ? <IconSun /> : <IconMoon />}</button>
+            <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className="px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors">{lang === 'zh' ? 'EN' : '中文'}</button>
+            <button onClick={() => setIsDark(d => !d)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">{isDark ? <IconSun /> : <IconMoon />}</button>
             <button onClick={handleLogout} className="flex items-center gap-1 px-2 py-1.5 text-xs text-secondary/70 hover:text-white transition-colors"><IconLogOut /> <span className="hidden lg:inline">{t.logout}</span></button>
           </div>
-          <div className="md:hidden flex items-center"><button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-secondary">{isMobileMenuOpen ? <IconX /> : <IconMenu />}</button></div>
         </div>
       </header>
 
       <div className="bg-secondary/10 dark:bg-secondary/5 border-b border-secondary/20 py-2 px-4 text-center">
-        <p className="text-xs sm:text-sm text-primary dark:text-secondary flex items-center justify-center gap-2"><IconLink /> {t.smmc_hub}<a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="underline font-bold hover:text-primary/70 ml-1">({lang==='zh'?'點此登入':'Login'})</a></p>
+        <p className="text-xs sm:text-sm text-primary dark:text-secondary flex items-center justify-center gap-2"><IconLink /> {t.smmc_hub}<a href="https://lolopodcast.github.io/SMMC-Executive-Hub/" target="_blank" rel="noreferrer" className="underline font-bold hover:text-primary/70 ml-1">({lang === 'zh' ? '點此登入' : 'Login'})</a></p>
       </div>
 
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4 flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1 bg-slate-200 dark:bg-slate-700 rounded-xl p-1 w-fit">
-          <button onClick={() => setActiveTab('new')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='new'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}><IconBot /> {t.tab_new}</button>
-          <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab==='history'?'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm':'text-slate-500 hover:text-slate-700'}`}><IconHistory /> {t.tab_history}</button>
+          <button onClick={() => setActiveTab('new')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'new' ? 'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><IconBot /> {t.tab_new}</button>
+          <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'history' ? 'bg-white dark:bg-slate-800 text-primary dark:text-secondary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><IconHistory /> {t.tab_history}</button>
         </div>
-        <div className="flex items-center gap-2"><span className={`text-xs px-3 py-1 rounded-full font-bold ${isAdmin?'bg-primary/20 text-primary dark:bg-secondary/20 dark:text-secondary':isTA?'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300':'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>{isAdmin?'Professor':isTA?'TA':userGroup||'Student'}</span></div>
+        <div className="flex items-center gap-2"><span className={`text-xs px-3 py-1 rounded-full font-bold ${isAdmin ? 'bg-primary/20 text-primary dark:bg-secondary/20 dark:text-secondary' : isTA ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>{isAdmin ? 'Professor' : isTA ? 'TA' : userGroup || 'Student'}</span></div>
       </div>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6">
         {activeTab === 'history' ? (
-          <div className="animate-fade-in"><div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm"><div className="flex items-center gap-3 mb-6"><IconHistory /><h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">{t.history_title}</h2></div><div className="flex gap-2 mb-6"><div className="relative flex-1"><input type="text" value={historySearch} onChange={e => setHistorySearch(e.target.value)} onKeyDown={e => e.key==='Enter' && loadHistory()} placeholder={t.history_search_ph} className="w-full pl-8 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none text-sm dark:text-white" /></div><button onClick={loadHistory} className="px-4 py-2 bg-primary dark:bg-secondary text-white dark:text-primary rounded-xl text-sm font-bold hover:opacity-90"><IconSearch /></button></div>{historyLoading ? <div className="flex items-center justify-center py-12 text-slate-400"><IconLoader /> <span className="ml-2">Loading...</span></div> : historyList.length === 0 ? <p className="text-center text-slate-400 py-12">{t.history_empty}</p> : <div className="space-y-3">{historyList.map(r => <div key={r.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/30 dark:hover:border-secondary/30 transition-colors"><div><p className="font-bold text-sm text-primary dark:text-secondary">{r.company}</p><p className="text-xs text-slate-400 mt-1">{new Date(r.created_at+'Z').toLocaleString()} · {r.lang.toUpperCase()}</p></div><button onClick={() => loadReport(r.id)} className="px-4 py-2 text-xs font-bold bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary rounded-lg hover:bg-primary/20 dark:hover:bg-secondary/20 transition-colors">{t.history_load}</button></div>)}</div>}</div></div>
+          <div className="animate-fade-in">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+              <div className="flex items-center gap-3 mb-6"><IconHistory /><h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">{t.history_title}</h2></div>
+              <div className="flex gap-2 mb-6">
+                <input type="text" value={historySearch} onChange={e => setHistorySearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadHistory()} placeholder={t.history_search_ph} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none text-sm dark:text-white" />
+                <button onClick={loadHistory} className="px-4 py-2 bg-primary dark:bg-secondary text-white dark:text-primary rounded-xl text-sm font-bold hover:opacity-90"><IconSearch /></button>
+              </div>
+              {historyLoading ? <div className="flex items-center justify-center py-12 text-slate-400"><IconLoader /><span className="ml-2">Loading...</span></div> : historyList.length === 0 ? <p className="text-center text-slate-400 py-12">{t.history_empty}</p> : <div className="space-y-3">{historyList.map(r => <div key={r.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600"><div><p className="font-bold text-sm text-primary dark:text-secondary">{r.company}</p><p className="text-xs text-slate-400 mt-1">{new Date(`${r.created_at}Z`).toLocaleString()} · {r.lang.toUpperCase()}</p></div><button onClick={() => loadReport(r.id)} className="px-4 py-2 text-xs font-bold bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary rounded-lg hover:bg-primary/20 dark:hover:bg-secondary/20">{t.history_load}</button></div>)}</div>}
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
             <div className="lg:col-span-4 space-y-6 flex flex-col">
@@ -538,38 +625,38 @@ function App() {
                 <input type="text" value={company} onChange={e => setCompany(e.target.value)} disabled={isWorking} placeholder={t.ph_company} className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white" />
                 <div className="mt-4 mb-6 space-y-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                   <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.data_source_title}</h3>
-                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.opt_news}</span>{optNews && <div className="mt-1 flex items-center gap-2 text-xs"><span className="text-slate-500">{t.news_years}</span><select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">{[1,2,3,4,5].map(y => <option key={y} value={y}>{y} {t.news_years_suffix}</option>)}</select></div>}</div></label>
-                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300 pt-0.5">{t.opt_ir}</span></label>
-                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col w-full"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 pt-0.5">{t.opt_file}</span>{optFile && <div className="mt-2 space-y-2"><input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" />{uploadedFiles.length > 0 && <div className="text-[10px] text-green-600 dark:text-green-400">{lang==='zh'?`已選擇 ${uploadedFiles.length} 個檔案`:`${uploadedFiles.length} files selected`}</div>}<p className="text-[10px] text-slate-400">{t.file_support}</p></div>}</div></label>
+                  <label className="flex items-start gap-2 cursor-pointer"><input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.opt_news}</span>{optNews && <div className="mt-1 flex items-center gap-2 text-xs"><span className="text-slate-500">{t.news_years}</span><select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">{[1,2,3,4,5].map(y => <option key={y} value={y}>{y} {t.news_years_suffix}</option>)}</select></div>}</div></label>
+                  <label className="flex items-start gap-2 cursor-pointer"><input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300 pt-0.5">{t.opt_ir}</span></label>
+                  <label className="flex items-start gap-2 cursor-pointer"><input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col w-full"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 pt-0.5">{t.opt_file}</span>{optFile && <div className="mt-2 space-y-2"><input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" />{uploadedFiles.length > 0 && <div className="text-[10px] text-green-600 dark:text-green-400">{lang === 'zh' ? `已選擇 ${uploadedFiles.length} 個檔案` : `${uploadedFiles.length} files selected`}</div>}<p className="text-[10px] text-slate-400">{t.file_support}</p></div>}</div></label>
                 </div>
-                <button onClick={runWorkflow} disabled={isWorking} className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg">{isWorking ? <><IconLoader/> {t.processing}</> : t.start_btn}</button>
+                <button onClick={runWorkflow} disabled={isWorking} className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg">{isWorking ? <><IconLoader /> {t.processing}</> : t.start_btn}</button>
                 {errorMsg && <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 border border-red-200 dark:border-red-800/30"><IconAlert /><p>{errorMsg}</p></div>}
                 {savedMsg && <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm rounded-lg flex items-center gap-2 border border-green-200 dark:border-green-800/30"><IconCheck /><p>{savedMsg}</p></div>}
               </div>
 
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden flex-1">
                 <h2 className="font-serif font-bold text-primary dark:text-secondary mb-6 text-lg">2. Single-Pass Workflow</h2>
-                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 dark:before:via-slate-600 before:to-transparent">
-                  <div className="relative flex items-center justify-between"><div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 text-slate-500 shadow shrink-0 z-10"><span className="text-sm font-bold">🔍</span></div><div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm"><p className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">Web Search + RAG</p><div className="text-xs">{workflowState === 'search' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_search}</span> : workflowState === 'rag' ? <span className="text-amber-600 flex items-center gap-1"><IconLoader/> {t.status_rag}</span> : !['idle','error'].includes(workflowState) ? <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><IconCheck/> Retrieved</span> : <span className="text-slate-400">Waiting</span>}</div></div></div>
-                  {[{id:'agent1',name:t.agent1,icon:'TP1'},{id:'agent2',name:t.agent2,icon:'TP2'},{id:'agent3',name:t.agent3,icon:'TP3'}].map(agt => <div key={agt.id} className="relative flex items-center justify-between"><div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shadow shrink-0 z-10 ${reports[agt.id]?'bg-primary dark:bg-secondary text-white dark:text-primary':'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}><span className="text-xs font-bold">{agt.icon}</span></div><div className="w-[calc(100%-4rem)] bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm"><p className="font-bold text-xs text-slate-700 dark:text-slate-300 mb-1 leading-tight">{agt.name}</p><div className="text-xs">{getStatusUI(agt.id)}</div></div></div>)}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">🔍</div><div className="flex-1 bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600"><p className="font-bold text-sm">Web Search + RAG</p><div className="text-xs">{workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : !['idle','error'].includes(workflowState) ? 'Retrieved' : 'Waiting'}</div></div></div>
+                  {[{ id: 'agent1', name: t.agent1 }, { id: 'agent2', name: t.agent2 }, { id: 'agent3', name: t.agent3 }].map(agt => <div key={agt.id} className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full flex items-center justify-center ${reports[agt.id] ? 'bg-primary dark:bg-secondary text-white dark:text-primary' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>{agt.id.slice(-1).toUpperCase()}</div><div className="flex-1 bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600"><p className="font-bold text-xs leading-tight">{agt.name}</p><div className="text-xs">{getStatusUI(agt.id)}</div></div></div>)}
                 </div>
               </div>
 
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
                 <div className="flex items-center gap-2 text-primary dark:text-secondary mb-4"><IconBookOpen /><h2 className="font-serif font-bold text-lg">{t.reminders_title}</h2></div>
-                <div className="space-y-3">{t.reminders.map(rem => { const isOpen = activeReminder === rem.id; return <div key={rem.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/30"><button onClick={() => setActiveReminder(isOpen?null:rem.id)} className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"><span className={`font-bold text-sm ${isOpen?'text-primary dark:text-secondary':'text-slate-700 dark:text-slate-300'}`}>{rem.title}</span><span className="text-slate-400 dark:text-slate-500">{isOpen ? <IconChevronUp /> : <IconChevronDown />}</span></button>{isOpen && <div className="p-4 pt-1 border-t border-slate-200 dark:border-slate-700 animate-fade-in bg-white dark:bg-slate-800/50"><ul className="list-disc list-outside ml-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{rem.items.map((item,i) => <li key={i}>{item}</li>)}</ul></div>}</div>; })}</div>
+                <div className="space-y-3">{t.reminders.map(rem => { const isOpen = activeReminder === rem.id; return <div key={rem.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/30"><button onClick={() => setActiveReminder(isOpen ? null : rem.id)} className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"><span className={`font-bold text-sm ${isOpen ? 'text-primary dark:text-secondary' : 'text-slate-700 dark:text-slate-300'}`}>{rem.title}</span><span className="text-slate-400 dark:text-slate-500">{isOpen ? <IconChevronUp /> : <IconChevronDown />}</span></button>{isOpen && <div className="p-4 pt-1 border-t border-slate-200 dark:border-slate-700 animate-fade-in bg-white dark:bg-slate-800/50"><ul className="list-disc list-outside ml-4 space-y-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{rem.items.map((item, i) => <li key={i}>{item}</li>)}</ul></div>}</div>; })}</div>
               </div>
             </div>
 
             <div className="lg:col-span-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-[600px] lg:h-[calc(100vh-14rem)] overflow-hidden">
-              <div className="bg-primary/5 dark:bg-secondary/5 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0"><h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">3. Comprehensive Strategy Report</h2><div className="flex items-center gap-3">{workflowState === 'done' && <><span className="hidden sm:flex bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs px-3 py-1.5 rounded-full font-bold items-center gap-1 shadow-sm"><IconCheck/> Complete</span>{canExport && <button onClick={exportReport} className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white text-xs px-4 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-secondary dark:text-primary dark:hover:bg-secondary/90"><IconDownload /> .md</button>}</>}</div></div>
+              <div className="bg-primary/5 dark:bg-secondary/5 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0"><h2 className="font-serif font-bold text-primary dark:text-secondary text-xl">3. Comprehensive Strategy Report</h2><div className="flex items-center gap-3">{workflowState === 'done' && canExport && <button onClick={exportReport} className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white text-xs px-4 py-1.5 rounded-full font-bold shadow-sm transition-all dark:bg-secondary dark:text-primary dark:hover:bg-secondary/90"><IconDownload /> .md</button>}</div></div>
               <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
                 {workflowState === 'idle' && <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60"><p className="font-medium text-lg">{t.report_placeholder_title}</p><p className="text-sm mt-2">{t.report_placeholder_desc}</p></div>}
-                {ragContext && !['idle','error'].includes(workflowState) && <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm"><strong className="block mb-1">🔍 [{t.rag_label}]:</strong><span className="opacity-90 text-xs whitespace-pre-wrap">{ragContext.length > 800 ? ragContext.substring(0,800) + '...' : ragContext}</span></div>}
-                {reports.agent1 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div><div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent1)}} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
-                {reports.agent2 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div><div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent2)}} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
-                {reports.agent3 && <div className="mb-6 animate-fade-in"><div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div><div className="markdown-body" dangerouslySetInnerHTML={{__html:marked.parse(reports.agent3)}} /></div>}
-                {['search','rag','agent1','agent2','agent3','saving'].includes(workflowState) && <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 shadow-sm animate-fade-in">{canSeeTrace ? <><div className="flex items-center gap-3 mb-3"><IconLoader /><span className="text-sm font-bold text-primary dark:text-secondary">Single-Pass Agent Live Trace</span><span className="text-xs text-slate-400 ml-auto">{reactLog.length} events</span></div><div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">{reactLog.length === 0 ? <div className="flex items-center gap-2 text-slate-400 animate-pulse"><span>⏳</span><span>Initializing single-pass flow...</span></div> : reactLog.slice(-20).map((ev, i) => <div key={i} className="flex items-start gap-2 py-1 px-2 rounded bg-white dark:bg-slate-900/50"><span>{ev.icon}</span><span>{ev.msg}</span></div>)}</div></> : <div className="flex items-center gap-2 text-slate-400"><IconLoader /> {workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : t.status_thinking}</div>}</div>}
+                {ragContext && !['idle', 'error'].includes(workflowState) && <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm"><strong className="block mb-1">🔍 [{t.rag_label}]:</strong><span className="opacity-90 text-xs whitespace-pre-wrap">{ragContext.length > 800 ? `${ragContext.substring(0, 800)}...` : ragContext}</span></div>}
+                {reports.agent1 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent1 || '') }} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
+                {reports.agent2 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent2 || '') }} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
+                {reports.agent3 && <div className="mb-6 animate-fade-in"><div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent3 || '') }} /></div>}
+                {['search', 'rag', 'agent1', 'agent2', 'agent3', 'saving'].includes(workflowState) && <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 shadow-sm animate-fade-in">{canSeeTrace ? <><div className="flex items-center gap-3 mb-3"><IconLoader /><span className="text-sm font-bold text-primary dark:text-secondary">Single-Pass Agent Live Trace</span><span className="text-xs text-slate-400 ml-auto">{reactLog.length} events</span></div><div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">{reactLog.length === 0 ? <div className="flex items-center gap-2 text-slate-400 animate-pulse"><span>⏳</span><span>Initializing single-pass flow...</span></div> : reactLog.slice(-20).map((ev, i) => <div key={i} className="flex items-start gap-2 py-1 px-2 rounded bg-white dark:bg-slate-900/50"><span>{ev.icon}</span><span>{ev.msg}</span></div>)}</div></> : <div className="flex items-center gap-2 text-slate-400"><IconLoader /> {workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : t.status_thinking}</div>}</div>}
               </div>
             </div>
           </div>
@@ -578,6 +665,12 @@ function App() {
     </div>
   );
 }
+
+// Basic runtime checks
+console.assert(typeof friendlyHttpError === 'function', 'friendlyHttpError should exist');
+console.assert(friendlyHttpError(401) === '登入驗證失敗（401）。請重新確認 Token。', '401 message should match');
+console.assert(safeParseJson('{"ok":true}').ok === true, 'safeParseJson should parse valid JSON');
+console.assert(safeParseJson('bad-json') === null, 'safeParseJson should return null for invalid JSON');
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
