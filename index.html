@@ -285,7 +285,7 @@ const dict = {
     reminders_title: 'TP0~TP3 分析架構參考',
     footer_desc: '致力於提供頂尖的國際企業策略分析與執行方案。',
     footer_rights: '© 2026 SMMC. 保留所有權利。',
-    footer_version: 'Version 2.2.0 (2026.04.07)',
+    footer_version: 'Version 3.0.0 (2026.04.07) — Three-Mode Engine',
     architect_label: 'Architect:',
     architect_name: 'Prof. Shihmin Lo',
     architect_url: 'https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo',
@@ -346,7 +346,7 @@ const dict = {
     reminders_title: 'TP0~TP3 Framework Reference',
     footer_desc: 'Dedicated to providing top-tier strategy analysis and deployment solutions for multinational corporations.',
     footer_rights: '© 2026 SMMC. All rights reserved.',
-    footer_version: 'Version 2.2.0 (2026.04.07)',
+    footer_version: 'Version 3.0.0 (2026.04.07) — Three-Mode Engine',
     architect_label: 'Architect:',
     architect_name: 'Prof. Shihmin Lo',
     architect_url: 'https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo',
@@ -623,6 +623,7 @@ function App() {
   const [newsYears, setNewsYears] = useState(3);
   const [optIR, setOptIR] = useState(true);
   const [optFile, setOptFile] = useState(false);
+  const [analysisMode, setAnalysisMode] = useState('express');
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [activeReminder, setActiveReminder] = useState(null);
   const [activeTab, setActiveTab] = useState('new');
@@ -744,11 +745,71 @@ function App() {
   };
 
   const exportPDF = () => {
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${company}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#222} h1,h2{color:#004030} .badge{display:inline-block;padding:6px 12px;border-radius:999px;background:#eef2ff;margin:16px 0 8px;font-weight:700} .a1{background:#dbeafe;color:#1e40af}.a2{background:#ede9fe;color:#6d28d9}.a3{background:#dcfce7;color:#166534}</style></head><body><h1>${company}</h1><p>Generated: ${new Date().toLocaleString()}</p><div class="badge a1">${t.agent1}</div>${renderMarkdown(reports.agent1 || '')}<div class="badge a2">${t.agent2}</div>${renderMarkdown(reports.agent2 || '')}<div class="badge a3">${t.agent3}</div>${renderMarkdown(reports.agent3 || '')}</body></html>`;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    const renderMd = (md) => marked.parse((md || '').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"'));
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${company} — SMMC Strategy Report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Inter:wght@400;500;600&display=swap');
+@page { size: A4; margin: 2cm 2.5cm 2.5cm; }
+@page:first { margin: 0; }
+body { font-family: 'Inter', sans-serif; font-size: 12px; color: #333; line-height: 1.7; }
+.cover { background: #004030; color: #fff; width: 100%; min-height: 100vh; padding: 60px 50px 50px; display: flex; flex-direction: column; justify-content: flex-end; page-break-after: always; position: relative; box-sizing: border-box; }
+.cover .logo { position: absolute; top: 40px; right: 50px; font-family: 'Merriweather', serif; font-size: 32px; font-weight: 900; color: #D8C3A5; letter-spacing: 4px; }
+.cover .tag { display: inline-block; border: 1px solid #D8C3A5; color: #D8C3A5; font-size: 11px; padding: 3px 12px; border-radius: 4px; margin-bottom: 16px; letter-spacing: 1.5px; text-transform: uppercase; }
+.cover h1 { font-family: 'Merriweather', serif; font-size: 28px; font-weight: 700; margin: 0 0 8px; line-height: 1.3; }
+.cover h2 { font-size: 16px; font-weight: 400; color: #D8C3A5; margin: 0 0 28px; opacity: .85; }
+.cover .meta { font-size: 12px; color: rgba(255,255,255,.6); line-height: 2; }
+.cover .meta b { color: #D8C3A5; font-weight: 500; }
+.toc { page-break-after: always; padding: 20px 0; }
+.toc h3 { font-family: 'Merriweather', serif; font-size: 18px; font-weight: 700; color: #004030; border-bottom: 2px solid #D8C3A5; padding-bottom: 8px; margin: 0 0 16px; }
+.toc-item { display: flex; align-items: baseline; padding: 8px 0; border-bottom: 0.5px solid #e8e8e4; }
+.toc-item .num { color: #004030; font-weight: 600; min-width: 28px; font-size: 13px; }
+.toc-item .title { flex: 1; font-size: 13px; color: #333; }
+.toc-sub { padding: 4px 0 4px 28px; font-size: 11px; color: #888; }
+.agent-section { page-break-before: always; }
+.agent-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 5px 16px; border-radius: 20px; margin-bottom: 16px; }
+.a1 { background: #dbeafe; color: #1e40af; } .a2 { background: #ede9fe; color: #5b21b6; } .a3 { background: rgba(0,64,48,.12); color: #004030; }
+h1, h2, h3 { font-family: 'Merriweather', serif; color: #004030; page-break-after: avoid; }
+h1 { font-size: 20px; margin: 24px 0 10px; } h2 { font-size: 16px; margin: 20px 0 8px; } h3 { font-size: 14px; margin: 16px 0 6px; }
+h4 { font-size: 13px; font-weight: 600; color: #004030; margin: 12px 0 6px; }
+p { margin: 0 0 8px; } ul, ol { margin: 0 0 10px; padding-left: 20px; } li { margin-bottom: 3px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11px; page-break-inside: avoid; }
+th { background: #004030; color: #D8C3A5; padding: 7px 10px; text-align: left; font-weight: 500; font-size: 10px; }
+td { padding: 6px 10px; border-bottom: 0.5px solid #e8e8e4; } tr:nth-child(even) td { background: #fafaf8; }
+strong { color: #004030; }
+blockquote { background: #f8f6f0; border-left: 3px solid #D8C3A5; padding: 10px 14px; margin: 12px 0; font-size: 12px; color: #555; border-radius: 0; page-break-inside: avoid; }
+code { background: #f1f1ee; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
+.page-footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 8px 2.5cm; font-size: 9px; color: #bbb; border-top: 0.5px solid #eee; }
+.page-footer .brand { color: #004030; font-weight: 600; }
+</style></head><body>
+<div class="cover"><div class="logo">SMMC</div><div class="tag">AI Strategy Report</div>
+<h1>${company}</h1><h2>Enterprise Strategy Comprehensive Analysis Report</h2>
+<div class="meta"><b>Course</b> Strategic Management of Multinational Corporations (SMMC-EMI)<br>
+<b>Framework</b> TP0 Background &bull; TP1 Industry &bull; TP2 Resources &bull; TP3 Corporate Strategy<br>
+<b>Mode</b> ${analysisMode.charAt(0).toUpperCase()+analysisMode.slice(1)} Analysis<br>
+<b>Generated</b> ${dateStr}<br>
+<b>Powered by</b> SMMC AI Strategy Workstation v3.0<br>
+<b>Architect</b> Prof. Shihmin Lo, Ph.D. &mdash; Dept. of International Business Studies, National Chi Nan University</div></div>
+<div class="toc"><h3>Table of contents</h3>
+<div class="toc-item"><span class="num">1</span><span class="title">TP0 &mdash; Company background and overview</span></div>
+<div class="toc-sub">1.1 Latest news &bull; 1.2 History, vision, mission &bull; 1.3 Organization &bull; 1.4 Business portfolio &bull; 1.5 Financial performance</div>
+<div class="toc-item"><span class="num">2</span><span class="title">TP1 &mdash; Macro environment and industry analysis</span></div>
+<div class="toc-sub">2.1 PESTEL &bull; 2.2 Industry value chain &bull; 2.3 Life cycle &bull; 2.4 Five forces &bull; 2.5 Competitor analysis &bull; 2.6 Competitive dynamics &bull; 2.7 4P summary</div>
+<div class="toc-item"><span class="num">3</span><span class="title">TP2 &mdash; Resources and capabilities analysis</span></div>
+<div class="toc-sub">3.1 Organization design &bull; 3.2 Value chain &bull; 3.3 Key resources &bull; 3.4 VRIN assessment &bull; 3.5 Core competencies &bull; 3.6 Dynamic capabilities</div>
+<div class="toc-item"><span class="num">4</span><span class="title">TP3 &mdash; Corporate strategy and future development</span></div>
+<div class="toc-sub">4.1 Vertical integration &bull; 4.2 Product diversification &bull; 4.3 Geographic expansion &bull; 4.4 Future challenges and suggestions</div></div>
+<div class="agent-section"><div class="agent-badge a1">Agent 1: Macro &amp; Industry Analyst (TP0&ndash;TP1)</div>${renderMd(reports.agent1)}</div>
+<div class="agent-section"><div class="agent-badge a2">Agent 2: Resources &amp; Capabilities Analyst (TP2)</div>${renderMd(reports.agent2)}</div>
+<div class="agent-section"><div class="agent-badge a3">Agent 3: Chief Strategy Officer (TP3)</div>${renderMd(reports.agent3)}</div>
+<div class="page-footer"><span class="brand">SMMC AI Strategy Workstation v3.0</span><span>${company} &mdash; ${dateStr}</span><span>Architect: Prof. Shihmin Lo</span></div>
+</body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, '_blank');
-    if (w) w.onload = () => setTimeout(() => w.print(), 500);
+    if (w) w.onload = () => setTimeout(() => w.print(), 800);
   };
 
   const runWorkflow = async () => {
@@ -800,7 +861,7 @@ function App() {
       if (optNews || optIR) {
         setWorkflowState('search');
         addLog('🌐', lang === 'zh' ? `線上搜尋「${trimmedCompany}」資料中...` : `Searching \"${trimmedCompany}\" online...`);
-        await api('search', { company: trimmedCompany, optNews, newsYears, optIR, lang }, authToken);
+        await api('search', { company: trimmedCompany, optNews, newsYears, optIR, lang, mode: analysisMode }, authToken);
       }
 
       if (optFile && uploadedFiles.length > 0) {
@@ -827,13 +888,14 @@ function App() {
       if (optIR) optPrompt += '\n- 著重官方網站與 IR 公開資訊。';
 
       setWorkflowState('agent1');
-      addLog('🚀', 'Agent 1 啟動');
+      addLog('🚀', `Agent 1 啟動 [${analysisMode}]`);
       const r1 = await apiSSE({
         company: trimmedCompany,
         agentId: 'agent1',
         agentRole: '資深總體經濟與產業分析師',
         taskPrompt: `分析對象: ${trimmedCompany}。\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
         ragContext: context,
+        mode: analysisMode,
       }, authToken, handleEvent);
       if (r1) {
         collectedReports.agent1 = r1.report || '';
@@ -843,13 +905,14 @@ function App() {
       }
 
       setWorkflowState('agent2');
-      addLog('🚀', 'Agent 2 啟動');
+      addLog('🚀', `Agent 2 啟動 [${analysisMode}]`);
       const r2 = await apiSSE({
         company: trimmedCompany,
         agentId: 'agent2',
         agentRole: '資深企業資源與價值鏈精算師',
         taskPrompt: `分析對象: ${trimmedCompany}。\n【Agent 1 節錄】：${(collectedReports.agent1 || '').substring(0, 1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
         ragContext: context,
+        mode: analysisMode,
       }, authToken, handleEvent);
       if (r2) {
         collectedReports.agent2 = r2.report || '';
@@ -859,13 +922,14 @@ function App() {
       }
 
       setWorkflowState('agent3');
-      addLog('🚀', 'Agent 3 啟動');
+      addLog('🚀', `Agent 3 啟動 [${analysisMode}]`);
       const r3 = await apiSSE({
         company: trimmedCompany,
         agentId: 'agent3',
         agentRole: '頂尖集團策略長 (CSO)',
         taskPrompt: `分析對象: ${trimmedCompany}。\n【Agent 1 節錄】：${(collectedReports.agent1 || '').substring(0, 1000)}...\n【Agent 2 節錄】：${(collectedReports.agent2 || '').substring(0, 1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
         ragContext: context,
+        mode: analysisMode,
       }, authToken, handleEvent);
       if (r3) {
         collectedReports.agent3 = r3.report || '';
@@ -889,6 +953,7 @@ function App() {
         agent3Trace: collectedTraces.agent3,
         ragContext: context,
         options: { optNews, newsYears, optIR, optFile },
+        mode: analysisMode,
       }, authToken);
 
       setSavedMsg(t.report_saved);
@@ -989,7 +1054,26 @@ function App() {
                   <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.data_source_title}</h3>
                   <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optNews} onChange={e => setOptNews(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors">{t.opt_news}</span>{optNews && <div className="mt-1 flex items-center gap-2 text-xs"><span className="text-slate-500">{t.news_years}</span><select value={newsYears} onChange={e => setNewsYears(Number(e.target.value))} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer">{[1,2,3,4,5].map(y => <option key={y} value={y}>{y} {t.news_years_suffix}</option>)}</select></div>}</div></label>
                   <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors leading-tight pt-0.5">{t.opt_ir}</span></label>
-                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col w-full"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>{optFile && <div className="mt-2 space-y-2"><input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" />{uploadedFiles.length > 0 && <div className="text-[10px] text-green-600 dark:text-green-400">{lang === 'zh' ? `已選擇 ${uploadedFiles.length} 個檔案` : `${uploadedFiles.length} files selected`}</div>}<p className="text-[10px] text-slate-400">{t.file_support}</p></div>}</div></label>
+                  <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col w-full"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>{optFile && <div className="mt-2 space-y-2"><div className="flex gap-2 flex-col sm:flex-row"><div className="flex-1"><label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'選擇檔案':'Select files'}</label><input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" /></div><div className="flex-1"><label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'或選擇整個資料夾':'Or select folder'}</label><input type="file" webkitdirectory="" directory="" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" /></div></div>{uploadedFiles.length > 0 && <div className="text-[10px] text-green-600 dark:text-green-400">{lang==='zh'?`已選擇 ${uploadedFiles.length} 個檔案`:`${uploadedFiles.length} files selected`}: {uploadedFiles.map(f=>f.fileName).slice(0,5).join(', ')}{uploadedFiles.length>5?'...':''}</div>}<p className="text-[10px] text-slate-400">{t.file_support}</p></div>}</div></label>
+                </div>
+                {/* Analysis mode selector */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{lang==='zh'?'分析深度':'Analysis Depth'}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id:'express', zh:'快速', en:'Express', zh2:'~5 次 API', en2:'~5 API calls' },
+                      { id:'standard', zh:'標準', en:'Standard', zh2:'~10 次 API', en2:'~10 API calls' },
+                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', zh2:'~18 次 API', en2:'~18 API calls' },
+                    ].map(m => (
+                      <button key={m.id} onClick={() => !isWorking && setAnalysisMode(m.id)} disabled={isWorking}
+                        className={`p-2 rounded-lg border text-center transition-all text-xs ${analysisMode===m.id
+                          ? 'border-primary dark:border-secondary bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary font-bold'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-400'}`}>
+                        <div className="font-bold">{lang==='zh'?m.zh:m.en}</div>
+                        <div className="text-[10px] opacity-60 mt-0.5">{lang==='zh'?m.zh2:m.en2}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <button onClick={runWorkflow} disabled={isWorking} className="w-full py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-primary dark:bg-secondary text-white dark:text-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg">{isWorking ? <><IconLoader /> {t.processing}</> : t.start_btn}</button>
                 {errorMsg && <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 border border-red-200 dark:border-red-800/30"><IconAlert /><p>{errorMsg}</p></div>}
