@@ -1092,9 +1092,9 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
                   <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{lang==='zh'?'分析深度':'Analysis Depth'}</h3>
                   <div className={`grid gap-2 ${['student'].includes(userRole)?'grid-cols-1':['ta'].includes(userRole)?'grid-cols-2':'grid-cols-3'}`}>
                     {[
-                      { id:'express', zh:'快速', en:'Express', level:1, time:'~30s', roles:['student','ta','admin'] },
-                      { id:'standard', zh:'標準', en:'Standard', level:2, time:'~1-2 min', roles:['ta','admin'] },
-                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', level:3, time:'~3-5 min', roles:['admin'] },
+                      { id:'express', zh:'快速', en:'Express', level:1, time:'~1 min', roles:['student','ta','admin'] },
+                      { id:'standard', zh:'標準', en:'Standard', level:2, time:'~2-3 min', roles:['ta','admin'] },
+                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', level:3, time:'~5-8 min', roles:['admin'] },
                     ].filter(m => m.roles.includes(userRole)).map(m => (
                       <button key={m.id} onClick={() => !isWorking && setAnalysisMode(m.id)} disabled={isWorking}
                         className={`p-3 rounded-lg border text-center transition-all text-xs ${analysisMode===m.id
