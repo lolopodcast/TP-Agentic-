@@ -11,11 +11,68 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 
 <script>
 window.onerror = function(message, source, lineno, colno, error) {
   console.error('Global script error:', { message, source, lineno, colno, error });
 };
+
+const ALLOWED_HOSTS = new Set([
+  'lolopodcast.github.io',
+  'localhost',
+  '127.0.0.1'
+]);
+const OFFICIAL_REDIRECT_URL = 'https://lolopodcast.github.io/SMMC-Executive-Hub/';
+const COPYRIGHT_NOTICE = 'Intellectual Property of Prof. Shihmin Lo';
+
+if (!ALLOWED_HOSTS.has(window.location.hostname)) {
+  window.location.replace(OFFICIAL_REDIRECT_URL);
+}
+if (window.top !== window.self) {
+  try {
+    window.top.location = window.self.location.href;
+  } catch (e) {
+    window.location.href = OFFICIAL_REDIRECT_URL;
+  }
+}
+
+function showCopyrightNotice() {
+  const existing = document.getElementById('copyright-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'copyright-toast';
+  toast.textContent = COPYRIGHT_NOTICE;
+  toast.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:99999;background:#004030;color:#fff;padding:10px 14px;border-radius:12px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:.98';
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
+}
+
+document.addEventListener('keydown', (e) => {
+  const key = (e.key || '').toLowerCase();
+  const ctrlOrMeta = e.ctrlKey || e.metaKey;
+  const blocked = key === 'f12' || (ctrlOrMeta && key === 'u') || (ctrlOrMeta && e.shiftKey && ['i', 'j', 'c'].includes(key));
+  if (blocked) {
+    e.preventDefault();
+    e.stopPropagation();
+    showCopyrightNotice();
+  }
+});
+
+document.addEventListener('contextmenu', (e) => {
+  const selection = window.getSelection ? String(window.getSelection()).trim() : '';
+  if (selection) return;
+  const t = e.target;
+  if (t && (t.closest('img') || t.closest('.protected-graphic') || t.closest('svg.protected-graphic'))) {
+    e.preventDefault();
+    showCopyrightNotice();
+    return;
+  }
+  if (t && (t.closest('header') || t.closest('footer') || !t.closest('.markdown-body'))) {
+    e.preventDefault();
+    showCopyrightNotice();
+  }
+});
 
 tailwind.config = {
   darkMode: 'class',
@@ -57,6 +114,8 @@ tailwind.config = {
 .dark .markdown-body th, .dark .markdown-body td { border-color: #475569; }
 .markdown-body th { background: #f8fafc; font-weight: 600; }
 .dark .markdown-body th { background: #1e293b; }
+.guard-ui, .guard-ui * { user-select: none; -webkit-user-select: none; }
+.protected-graphic, .protected-graphic * { -webkit-user-drag: none; user-select: none; }
 </style>
 </head>
 <body class="bg-[#f4f4f4] dark:bg-[#121212] text-slate-800 dark:text-slate-200 font-sans transition-colors min-h-screen selection:bg-[#004030] selection:text-white dark:selection:bg-[#D8C3A5] dark:selection:text-[#004030]">
@@ -83,8 +142,34 @@ function safeParseJson(text) {
   }
 }
 
+function sanitizeHtml(html) {
+  if (!window.DOMPurify) return html;
+  return window.DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+  });
+}
+
+function renderMarkdown(md) {
+  return sanitizeHtml(marked.parse(md || ''));
+}
+
+function sanitizeCsvField(value, maxLen = 40) {
+  return String(value || '').replace(/[=+\-@]/g, '').replace(/[<>]/g, '').trim().slice(0, maxLen);
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const api = async (action, data = {}, token = '') => {
-  const resp = await fetch(API_BASE + '/api', {
+  const resp = await fetchWithTimeout(API_BASE + '/api', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, token, ...data }),
@@ -100,11 +185,11 @@ const api = async (action, data = {}, token = '') => {
 };
 
 const apiSSE = async (data, token, onEvent) => {
-  const resp = await fetch(API_BASE + '/api', {
+  const resp = await fetchWithTimeout(API_BASE + '/api', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'analyze', token, ...data }),
-  });
+  }, 60000);
 
   if (!resp.ok) {
     const raw = await resp.text();
@@ -200,7 +285,7 @@ const dict = {
     reminders_title: 'TP0~TP3 分析架構參考',
     footer_desc: '致力於提供頂尖的國際企業策略分析與執行方案。',
     footer_rights: '© 2026 SMMC. 保留所有權利。',
-    footer_version: 'Version 2.2.0 (2026.04) — Original UI + Single-Pass Backend',
+    footer_version: 'Version 2.2.0 (2026.04.07)',
     architect_label: 'Architect:',
     architect_name: 'Prof. Shihmin Lo',
     architect_url: 'https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo',
@@ -261,7 +346,7 @@ const dict = {
     reminders_title: 'TP0~TP3 Framework Reference',
     footer_desc: 'Dedicated to providing top-tier strategy analysis and deployment solutions for multinational corporations.',
     footer_rights: '© 2026 SMMC. All rights reserved.',
-    footer_version: 'Version 2.2.0 (Apr 2026) — Original UI + Single-Pass Backend',
+    footer_version: 'Version 2.2.0 (2026.04.07)',
     architect_label: 'Architect:',
     architect_name: 'Prof. Shihmin Lo',
     architect_url: 'https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo',
@@ -620,7 +705,14 @@ function App() {
 
   const handleFileUpload = (e) => {
     const SUPPORTED_EXT = /\.(txt|md|csv|json|pdf|docx?|xlsx?|pptx?)$/i;
-    const files = Array.from(e.target.files || []).filter(f => SUPPORTED_EXT.test(f.name));
+    const MAX_FILES = 5;
+    const MAX_FILE_BYTES = 10 * 1024 * 1024;
+    const files = Array.from(e.target.files || []).filter(f => SUPPORTED_EXT.test(f.name)).slice(0, MAX_FILES);
+    const oversized = files.find(f => f.size > MAX_FILE_BYTES);
+    if (oversized) {
+      setErrorMsg(`${lang === 'zh' ? '檔案過大，單檔上限 10MB：' : 'File too large, max 10MB each: '}${oversized.name}`);
+      return;
+    }
     if (!files.length) {
       setUploadedFiles([]);
       return;
@@ -652,7 +744,7 @@ function App() {
   };
 
   const exportPDF = () => {
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${company}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#222} h1,h2{color:#004030} .badge{display:inline-block;padding:6px 12px;border-radius:999px;background:#eef2ff;margin:16px 0 8px;font-weight:700} .a1{background:#dbeafe;color:#1e40af}.a2{background:#ede9fe;color:#6d28d9}.a3{background:#dcfce7;color:#166534}</style></head><body><h1>${company}</h1><p>Generated: ${new Date().toLocaleString()}</p><div class="badge a1">${t.agent1}</div>${marked.parse(reports.agent1 || '')}<div class="badge a2">${t.agent2}</div>${marked.parse(reports.agent2 || '')}<div class="badge a3">${t.agent3}</div>${marked.parse(reports.agent3 || '')}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${company}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#222} h1,h2{color:#004030} .badge{display:inline-block;padding:6px 12px;border-radius:999px;background:#eef2ff;margin:16px 0 8px;font-weight:700} .a1{background:#dbeafe;color:#1e40af}.a2{background:#ede9fe;color:#6d28d9}.a3{background:#dcfce7;color:#166534}</style></head><body><h1>${company}</h1><p>Generated: ${new Date().toLocaleString()}</p><div class="badge a1">${t.agent1}</div>${renderMarkdown(reports.agent1 || '')}<div class="badge a2">${t.agent2}</div>${renderMarkdown(reports.agent2 || '')}<div class="badge a3">${t.agent3}</div>${renderMarkdown(reports.agent3 || '')}</body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, '_blank');
@@ -660,7 +752,8 @@ function App() {
   };
 
   const runWorkflow = async () => {
-    if (!company.trim()) {
+    const trimmedCompany = sanitizeCsvField(company, 80);
+    if (!trimmedCompany) {
       setErrorMsg(t.err_empty);
       return;
     }
@@ -683,7 +776,7 @@ function App() {
           break;
         case 'react_action': {
           const icons = { single_pass: '🧠', search: '🔍', lookup_kb: '📚', calculate: '🔢' };
-          addLog(icons[evt.action] || '⚙️', `${evt.agentId} → ${evt.action}${evt.input ? `("${evt.input}")` : ''}`);
+          addLog(icons[evt.action] || '⚙️', `${evt.agentId} → ${evt.action}${evt.input ? `(\"${evt.input}\")` : ''}`);
           break;
         }
         case 'react_thought':
@@ -706,15 +799,15 @@ function App() {
     try {
       if (optNews || optIR) {
         setWorkflowState('search');
-        addLog('🌐', lang === 'zh' ? `線上搜尋「${company}」資料中...` : `Searching "${company}" online...`);
-        await api('search', { company, optNews, newsYears, optIR, lang }, authToken);
+        addLog('🌐', lang === 'zh' ? `線上搜尋「${trimmedCompany}」資料中...` : `Searching \"${trimmedCompany}\" online...`);
+        await api('search', { company: trimmedCompany, optNews, newsYears, optIR, lang }, authToken);
       }
 
       if (optFile && uploadedFiles.length > 0) {
         addLog('📎', lang === 'zh' ? `上傳 ${uploadedFiles.length} 個檔案...` : `Uploading ${uploadedFiles.length} files...`);
         for (const f of uploadedFiles) {
           try {
-            await api('file_upload', { company, fileName: f.fileName, fileType: f.fileType, fileBase64: f.fileBase64 }, authToken);
+            await api('file_upload', { company: trimmedCompany, fileName: f.fileName, fileType: f.fileType, fileBase64: f.fileBase64 }, authToken);
             addLog('✅', `${f.fileName} ${lang === 'zh' ? '解析完成' : 'parsed'}`);
           } catch (err) {
             addLog('⚠️', `${f.fileName} ${lang === 'zh' ? '解析失敗' : 'failed'}: ${err.message}`);
@@ -724,7 +817,7 @@ function App() {
 
       setWorkflowState('rag');
       addLog('🔍', lang === 'zh' ? '檢索知識庫...' : 'Retrieving knowledge base...');
-      const ragRes = await api('rag_retrieve', { company }, authToken);
+      const ragRes = await api('rag_retrieve', { company: trimmedCompany }, authToken);
       const context = ragRes.context || (lang === 'zh' ? '知識庫無相符資料。' : 'No data found in KB.');
       setRagContext(context);
 
@@ -736,10 +829,10 @@ function App() {
       setWorkflowState('agent1');
       addLog('🚀', 'Agent 1 啟動');
       const r1 = await apiSSE({
-        company,
+        company: trimmedCompany,
         agentId: 'agent1',
         agentRole: '資深總體經濟與產業分析師',
-        taskPrompt: `分析對象: ${company}。\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
+        taskPrompt: `分析對象: ${trimmedCompany}。\n${optPrompt}\n【任務】：\n1. TP0: 摘要公司歷史、願景與近年財務表現。\n2. TP1: PESTEL 分析（挑最關鍵 2-3 項）。\n3. TP1: 五力分析與產業價值鏈定位。\n4. 歸納 4P (Position, Priority, Posture, Profit potential)。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
       if (r1) {
@@ -752,10 +845,10 @@ function App() {
       setWorkflowState('agent2');
       addLog('🚀', 'Agent 2 啟動');
       const r2 = await apiSSE({
-        company,
+        company: trimmedCompany,
         agentId: 'agent2',
         agentRole: '資深企業資源與價值鏈精算師',
-        taskPrompt: `分析對象: ${company}。\n【Agent 1 節錄】：${(collectedReports.agent1 || '').substring(0, 1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
+        taskPrompt: `分析對象: ${trimmedCompany}。\n【Agent 1 節錄】：${(collectedReports.agent1 || '').substring(0, 1500)}...\n【任務】：\n1. TP2: 核心事業與營收流向。\n2. TP2: 企業價值鏈拆解。\n3. TP2: 3-4 個關鍵資源 VRIN 評估。\n4. TP2: 動態能力 (Dynamic Capabilities)。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
       if (r2) {
@@ -768,10 +861,10 @@ function App() {
       setWorkflowState('agent3');
       addLog('🚀', 'Agent 3 啟動');
       const r3 = await apiSSE({
-        company,
+        company: trimmedCompany,
         agentId: 'agent3',
         agentRole: '頂尖集團策略長 (CSO)',
-        taskPrompt: `分析對象: ${company}。\n【Agent 1 節錄】：${(collectedReports.agent1 || '').substring(0, 1000)}...\n【Agent 2 節錄】：${(collectedReports.agent2 || '').substring(0, 1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
+        taskPrompt: `分析對象: ${trimmedCompany}。\n【Agent 1 節錄】：${(collectedReports.agent1 || '').substring(0, 1000)}...\n【Agent 2 節錄】：${(collectedReports.agent2 || '').substring(0, 1000)}...\n【任務】：\n1. TP3: 垂直整合/多角化/地理擴張的策略行動與進入模式。\n2. TP3: 2-3 點未來挑戰與高階策略建議。\n3. 考量 ESG、Agency problem。\n語言：${langStr}`,
         ragContext: context,
       }, authToken, handleEvent);
       if (r3) {
@@ -784,7 +877,7 @@ function App() {
       setWorkflowState('saving');
       addLog('💾', lang === 'zh' ? '儲存報告至雲端...' : 'Saving report...');
       await api('save_report', {
-        company,
+        company: trimmedCompany,
         lang,
         ownerGroup: userGroup,
         ownerRole: userRole,
@@ -822,10 +915,10 @@ function App() {
 
   return (
     <div className="flex flex-col h-full min-h-screen">
-      <header className="sticky top-0 z-50 bg-primary text-white shadow-md border-b border-secondary/30">
+      <header className="sticky top-0 z-50 bg-primary text-white shadow-md border-b border-secondary/30 guard-ui">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="p-2 bg-secondary/20 rounded-lg hidden sm:block group-hover:bg-secondary/40 transition-colors"><IconBot /></div>
+            <div className="p-2 bg-secondary/20 rounded-lg hidden sm:block group-hover:bg-secondary/40 transition-colors protected-graphic" draggable="false"><IconBot /></div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2"><span className="font-black text-xl tracking-wider text-white group-hover:text-secondary transition-colors">{t.brand}</span><span className="hidden md:inline-block w-px h-4 bg-secondary/50"></span><span className="text-[10px] sm:text-xs text-secondary/90 font-medium px-2 py-0.5 bg-secondary/10 rounded-full border border-secondary/20">{t.subtitle}</span></div>
               <h1 className="font-serif font-bold text-sm sm:text-base md:text-lg text-secondary leading-tight mt-0.5">{t.title} <span className="hidden lg:inline text-[11px] font-sans opacity-70 ml-2 font-normal tracking-wide">{t.title_en_sub}</span></h1>
@@ -955,13 +1048,13 @@ function App() {
                 {ragContext && !['idle', 'error'].includes(workflowState) && <div className="mb-8 p-4 bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-400 rounded-r-lg text-sm text-amber-800 dark:text-amber-200 animate-fade-in shadow-sm"><strong className="block mb-1">🔍 [{t.rag_label}]:</strong><span className="opacity-90 text-xs whitespace-pre-wrap">{ragContext.length > 800 ? `${ragContext.substring(0, 800)}...` : ragContext}</span></div>}
 
                 {!reports.agent1 && workflowState === 'agent1' && <div className="mb-10 animate-fade-in"><div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div><div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40"><div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div></div><p className="mt-4 text-xs text-slate-400">{t.skeleton_agent1}</p></div><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
-                {reports.agent1 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent1 || '') }} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
+                {reports.agent1 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-blue-200 dark:border-blue-800">{t.agent1}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(reports.agent1 || '') }} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
 
                 {!reports.agent2 && workflowState === 'agent2' && <div className="mb-10 animate-fade-in"><div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div><div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40"><div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div></div><p className="mt-4 text-xs text-slate-400">{t.skeleton_agent2}</p></div><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
-                {reports.agent2 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent2 || '') }} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
+                {reports.agent2 && <div className="mb-10 animate-fade-in"><div className="inline-block bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-purple-200 dark:border-purple-800">{t.agent2}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(reports.agent2 || '') }} /><div className="my-8 border-b-2 border-dashed border-slate-200 dark:border-slate-700"></div></div>}
 
                 {!reports.agent3 && workflowState === 'agent3' && <div className="mb-6 animate-fade-in"><div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div><div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40"><div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div><div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div></div><p className="mt-4 text-xs text-slate-400">{t.skeleton_agent3}</p></div></div>}
-                {reports.agent3 && <div className="mb-6 animate-fade-in"><div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(reports.agent3 || '') }} /></div>}
+                {reports.agent3 && <div className="mb-6 animate-fade-in"><div className="inline-block bg-primary/20 dark:bg-secondary/20 text-primary dark:text-secondary px-4 py-1.5 rounded-full text-sm font-bold mb-4 shadow-sm border border-primary/30 dark:border-secondary/30">{t.agent3}</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(reports.agent3 || '') }} /></div>}
 
                 {['search', 'rag', 'agent1', 'agent2', 'agent3', 'saving'].includes(workflowState) && <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 shadow-sm animate-fade-in">{canSeeTrace ? <><div className="flex items-center gap-3 mb-3"><IconLoader /><span className="text-sm font-bold text-primary dark:text-secondary">Agent Live Trace</span><span className="text-xs text-slate-400 ml-auto">{reactLog.length} events</span></div><div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">{reactLog.length === 0 ? <div className="flex items-center gap-2 text-slate-400 animate-pulse"><span>⏳</span><span>{workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : 'Initializing workflow...'}</span></div> : reactLog.slice(-20).map((ev, i) => <div key={i} className="flex items-start gap-2 py-1 px-2 rounded bg-white dark:bg-slate-900/50"><span>{ev.icon}</span><span>{ev.msg}</span></div>)}</div></> : <div className="flex items-center gap-2 text-slate-400"><IconLoader /> {workflowState === 'search' ? t.status_search : workflowState === 'rag' ? t.status_rag : t.status_thinking}</div>}</div>}
               </div>
@@ -970,22 +1063,21 @@ function App() {
         )}
       </main>
 
-      <footer className="bg-primary text-white mt-auto border-t border-secondary/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-secondary/20 rounded-lg"><IconBot /></div>
-                <div>
-                  <p className="font-serif font-bold text-lg text-secondary">{t.brand}</p>
-                  <p className="text-sm text-white/80">{t.footer_desc}</p>
+      <footer className="bg-primary text-white mt-auto border-t border-secondary/20 h-16 guard-ui">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-full">
+          <div className="flex h-full items-center justify-between gap-6">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-secondary/20 rounded-lg protected-graphic" draggable="false"><IconBot /></div>
+                <div className="min-w-0">
+                  <p className="font-serif font-bold text-base text-secondary truncate">{t.brand}</p>
+                  <p className="text-xs text-white/70 truncate">{t.footer_desc}</p>
                 </div>
               </div>
-              <p className="text-xs text-white/60">{t.footer_rights}</p>
             </div>
-            <div className="text-sm text-white/80 space-y-1">
+            <div className="text-right text-sm text-white/80 leading-tight shrink-0">
               <p><span className="text-secondary font-semibold">{t.architect_label}</span> <a href={t.architect_url} target="_blank" rel="noreferrer" className="hover:text-secondary underline underline-offset-2">{t.architect_name}</a></p>
-              <p className="text-xs text-white/60">{t.footer_version}</p>
+              <p className="text-xs text-white/60 mt-1">{t.footer_version}</p>
             </div>
           </div>
         </div>
