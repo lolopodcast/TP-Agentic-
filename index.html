@@ -987,7 +987,7 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
       if (msg.includes('429')) errorCode = 'RATE_LIMIT';
       else if (msg.includes('500') || msg.includes('503')) errorCode = 'GEMINI_DOWN';
       else if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed')) errorCode = 'NETWORK';
-      else if (msg.includes('timeout') || msg.includes('Timeout')) errorCode = 'TIMEOUT';
+      else if (msg.includes('timeout') || msg.includes('Timeout') || msg.includes('abort')) errorCode = 'TIMEOUT';
       else if (msg.includes('parse') || msg.includes('Parse')) errorCode = 'FILE_PARSE';
 
       const friendly = (friendlyErrors[lang] || friendlyErrors.zh)[errorCode] || `${t.err_api} ${msg}`;
