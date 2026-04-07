@@ -1090,24 +1090,25 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
                 {/* Analysis mode selector — filtered by role */}
                 <div className="mb-4">
                   <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{lang==='zh'?'分析深度':'Analysis Depth'}</h3>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className={`grid gap-2 ${['student'].includes(userRole)?'grid-cols-1':['ta'].includes(userRole)?'grid-cols-2':'grid-cols-3'}`}>
                     {[
-                      { id:'express', zh:'快速', en:'Express', level:1, roles:['student','ta','admin'] },
-                      { id:'standard', zh:'標準', en:'Standard', level:2, roles:['ta','admin'] },
-                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', level:3, roles:['admin'] },
+                      { id:'express', zh:'快速', en:'Express', level:1, time:'~30s', roles:['student','ta','admin'] },
+                      { id:'standard', zh:'標準', en:'Standard', level:2, time:'~1-2 min', roles:['ta','admin'] },
+                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', level:3, time:'~3-5 min', roles:['admin'] },
                     ].filter(m => m.roles.includes(userRole)).map(m => (
                       <button key={m.id} onClick={() => !isWorking && setAnalysisMode(m.id)} disabled={isWorking}
                         className={`p-3 rounded-lg border text-center transition-all text-xs ${analysisMode===m.id
                           ? 'border-primary dark:border-secondary bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary font-bold'
                           : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-400'}`}>
                         <div className="font-bold mb-1">{lang==='zh'?m.zh:m.en}</div>
-                        <div className="flex justify-center gap-1">
+                        <div className="flex justify-center gap-1 mb-1">
                           {[1,2,3].map(i => (
                             <div key={i} className={`w-3 h-2 rounded-sm ${i<=m.level
                               ? (m.level===1?'bg-green-500':m.level===2?'bg-amber-500':'bg-red-500')
                               : 'bg-slate-200 dark:bg-slate-700'}`}/>
                           ))}
                         </div>
+                        <div className="text-[9px] opacity-50">{m.time}</div>
                       </button>
                     ))}
                   </div>
