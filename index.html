@@ -218,7 +218,7 @@ const apiSSE = async (data, token, onEvent) => {
       const evt = safeParseJson(line.slice(6));
       if (!evt) continue;
       if (evt.type === 'react_complete') result = evt;
-      if (evt.type === 'react_fatal') throw new Error(evt.error || 'Analyze failed');
+      if (evt.type === 'react_fatal') throw new Error(`${evt.errorCode || ''}:${evt.error || 'Analyze failed'}`);
       if (evt.type !== 'stream_end' && typeof onEvent === 'function') onEvent(evt);
     }
   }
@@ -624,6 +624,7 @@ function App() {
   const [optIR, setOptIR] = useState(true);
   const [optFile, setOptFile] = useState(false);
   const [analysisMode, setAnalysisMode] = useState('express');
+  const [apiCallCount, setApiCallCount] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [activeReminder, setActiveReminder] = useState(null);
   const [activeTab, setActiveTab] = useState('new');
@@ -825,6 +826,7 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
     setReports({ agent1: '', agent2: '', agent3: '' });
     setTraces({ agent1: [], agent2: [], agent3: [] });
     setReactLog([]);
+    setApiCallCount(0);
 
     const addLog = (icon, msg) => setReactLog(prev => [...prev, { time: new Date().toLocaleTimeString(), icon, msg }]);
     const collectedReports = { agent1: '', agent2: '', agent3: '' };
@@ -833,11 +835,13 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
     const handleEvent = (evt) => {
       switch (evt.type) {
         case 'react_thinking':
+          setApiCallCount(c => c + 1);
           addLog('🧠', `${evt.agentId} — Round ${evt.round || 1}/${evt.maxRounds || 1} 思考中...`);
           break;
         case 'react_action': {
+          if (evt.action === 'search') setApiCallCount(c => c + 1);
           const icons = { single_pass: '🧠', search: '🔍', lookup_kb: '📚', calculate: '🔢' };
-          addLog(icons[evt.action] || '⚙️', `${evt.agentId} → ${evt.action}${evt.input ? `(\"${evt.input}\")` : ''}`);
+          addLog(icons[evt.action] || '⚙️', `${evt.agentId} → ${evt.action}${evt.input ? `("${evt.input}")` : ''}`);
           break;
         }
         case 'react_thought':
@@ -860,7 +864,8 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
     try {
       if (optNews || optIR) {
         setWorkflowState('search');
-        addLog('🌐', lang === 'zh' ? `線上搜尋「${trimmedCompany}」資料中...` : `Searching \"${trimmedCompany}\" online...`);
+        setApiCallCount(c => c + (optNews ? 1 : 0) + (optIR ? 1 : 0) + (analysisMode !== 'express' ? (optNews ? 1 : 0) + (optIR ? 1 : 0) : 0));
+        addLog('🌐', lang === 'zh' ? `線上搜尋「${trimmedCompany}」資料中...` : `Searching "${trimmedCompany}" online...`);
         await api('search', { company: trimmedCompany, optNews, newsYears, optIR, lang, mode: analysisMode }, authToken);
       }
 
@@ -960,8 +965,34 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
       addLog('🎉', lang === 'zh' ? '全部完成！' : 'All done!');
       setWorkflowState('done');
     } catch (err) {
-      setErrorMsg(`${t.err_api} ${err.message || ''}`.trim());
-      addLog('❌', err.message || 'Error');
+      const msg = err.message || '';
+      const friendlyErrors = {
+        zh: {
+          RATE_LIMIT: '⚡ Gemini API 暫時繁忙（速率限制）。系統已自動重試仍失敗。建議等 1-2 分鐘後再試，或切換為 Express 模式。',
+          GEMINI_DOWN: '🔧 Gemini 伺服器暫時異常。這是 Google 端的問題，通常幾分鐘內恢復。',
+          NETWORK: '🌐 無法連線至 Gemini API。請檢查網路狀態，或稍後再試。',
+          TIMEOUT: '⏱ 分析執行超時。建議切換為 Express 模式，或稍後再試。',
+          FILE_PARSE: '📎 檔案解析失敗。請確認格式為 PDF/Word/Excel/PPT/TXT。',
+        },
+        en: {
+          RATE_LIMIT: '⚡ Gemini API rate limit reached. Auto-retry exhausted. Wait 1-2 min or switch to Express mode.',
+          GEMINI_DOWN: '🔧 Gemini server temporarily down. Usually recovers in minutes.',
+          NETWORK: '🌐 Cannot connect to Gemini API. Check your network or try later.',
+          TIMEOUT: '⏱ Analysis timed out. Try Express mode or retry later.',
+          FILE_PARSE: '📎 File parse failed. Please check file format (PDF/Word/Excel/PPT/TXT).',
+        }
+      };
+      // Try to extract errorCode from the error message or response
+      let errorCode = 'UNKNOWN';
+      if (msg.includes('429')) errorCode = 'RATE_LIMIT';
+      else if (msg.includes('500') || msg.includes('503')) errorCode = 'GEMINI_DOWN';
+      else if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed')) errorCode = 'NETWORK';
+      else if (msg.includes('timeout') || msg.includes('Timeout')) errorCode = 'TIMEOUT';
+      else if (msg.includes('parse') || msg.includes('Parse')) errorCode = 'FILE_PARSE';
+
+      const friendly = (friendlyErrors[lang] || friendlyErrors.zh)[errorCode] || `${t.err_api} ${msg}`;
+      setErrorMsg(friendly);
+      addLog('❌', friendly);
       setWorkflowState('error');
     }
   };
@@ -1056,21 +1087,27 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
                   <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optIR} onChange={e => setOptIR(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors leading-tight pt-0.5">{t.opt_ir}</span></label>
                   <label className="flex items-start gap-2 cursor-pointer group"><input type="checkbox" checked={optFile} onChange={e => setOptFile(e.target.checked)} disabled={isWorking} className="mt-1 rounded text-primary focus:ring-primary/50" /><div className="flex flex-col w-full"><span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-primary dark:group-hover:text-secondary transition-colors pt-0.5">{t.opt_file}</span>{optFile && <div className="mt-2 space-y-2"><div className="flex gap-2 flex-col sm:flex-row"><div className="flex-1"><label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'選擇檔案':'Select files'}</label><input type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" /></div><div className="flex-1"><label className="block text-[10px] text-slate-400 mb-1">{lang==='zh'?'或選擇整個資料夾':'Or select folder'}</label><input type="file" webkitdirectory="" directory="" onChange={handleFileUpload} disabled={isWorking} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" /></div></div>{uploadedFiles.length > 0 && <div className="text-[10px] text-green-600 dark:text-green-400">{lang==='zh'?`已選擇 ${uploadedFiles.length} 個檔案`:`${uploadedFiles.length} files selected`}: {uploadedFiles.map(f=>f.fileName).slice(0,5).join(', ')}{uploadedFiles.length>5?'...':''}</div>}<p className="text-[10px] text-slate-400">{t.file_support}</p></div>}</div></label>
                 </div>
-                {/* Analysis mode selector */}
+                {/* Analysis mode selector — filtered by role */}
                 <div className="mb-4">
                   <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{lang==='zh'?'分析深度':'Analysis Depth'}</h3>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { id:'express', zh:'快速', en:'Express', zh2:'~5 次 API', en2:'~5 API calls' },
-                      { id:'standard', zh:'標準', en:'Standard', zh2:'~10 次 API', en2:'~10 API calls' },
-                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', zh2:'~18 次 API', en2:'~18 API calls' },
-                    ].map(m => (
+                      { id:'express', zh:'快速', en:'Express', level:1, roles:['student','ta','admin'] },
+                      { id:'standard', zh:'標準', en:'Standard', level:2, roles:['ta','admin'] },
+                      { id:'deep', zh:'深度 Agentic', en:'Deep Agentic', level:3, roles:['admin'] },
+                    ].filter(m => m.roles.includes(userRole)).map(m => (
                       <button key={m.id} onClick={() => !isWorking && setAnalysisMode(m.id)} disabled={isWorking}
-                        className={`p-2 rounded-lg border text-center transition-all text-xs ${analysisMode===m.id
+                        className={`p-3 rounded-lg border text-center transition-all text-xs ${analysisMode===m.id
                           ? 'border-primary dark:border-secondary bg-primary/10 dark:bg-secondary/10 text-primary dark:text-secondary font-bold'
                           : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-400'}`}>
-                        <div className="font-bold">{lang==='zh'?m.zh:m.en}</div>
-                        <div className="text-[10px] opacity-60 mt-0.5">{lang==='zh'?m.zh2:m.en2}</div>
+                        <div className="font-bold mb-1">{lang==='zh'?m.zh:m.en}</div>
+                        <div className="flex justify-center gap-1">
+                          {[1,2,3].map(i => (
+                            <div key={i} className={`w-3 h-2 rounded-sm ${i<=m.level
+                              ? (m.level===1?'bg-green-500':m.level===2?'bg-amber-500':'bg-red-500')
+                              : 'bg-slate-200 dark:bg-slate-700'}`}/>
+                          ))}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -1082,7 +1119,24 @@ hr { border: none; border-top: 1px solid #D8C3A5; margin: 20px 0; }
 
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden flex-1">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-secondary/5 rounded-bl-full pointer-events-none"></div>
-                <h2 className="font-serif font-bold text-primary dark:text-secondary mb-6 text-lg">2. Agentic Workflow</h2>
+                <h2 className="font-serif font-bold text-primary dark:text-secondary mb-4 text-lg">2. Agentic Workflow</h2>
+                {isWorking && (
+                  <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">API Calls</span>
+                      <span className="text-xs font-bold text-primary dark:text-secondary">{apiCallCount}</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-500 ${
+                        apiCallCount <= 5 ? 'bg-green-500' : apiCallCount <= 12 ? 'bg-amber-500' : 'bg-red-500'
+                      }`} style={{width: `${Math.min(100, (apiCallCount / (analysisMode==='deep'?18:analysisMode==='standard'?10:5)) * 100)}%`}} />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[9px] text-slate-400">{analysisMode.charAt(0).toUpperCase()+analysisMode.slice(1)}</span>
+                      <span className="text-[9px] text-slate-400">~{analysisMode==='deep'?18:analysisMode==='standard'?10:5} max</span>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 dark:before:via-slate-600 before:to-transparent">
                   <div className="relative flex items-center justify-between group">
                     <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 text-slate-500 shadow shrink-0 z-10 transition-colors"><span className="text-sm font-bold">🔍</span></div>
