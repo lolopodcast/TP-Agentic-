@@ -356,6 +356,8 @@ function LoginScreen({ onLogin, lang, setLang }) {
 }
 
 function AdminPanel({ authToken, lang, t }) {
+  const [cleanupDays, setCleanupDays] = useState(90);
+  const [cleanupKeepReports, setCleanupKeepReports] = useState(20);
   const [adminTab, setAdminTab] = useState('tokens');
   const [tokens, setTokens] = useState([]);
   const [kbStats, setKbStats] = useState(null);
@@ -398,12 +400,57 @@ function AdminPanel({ authToken, lang, t }) {
     loadKB();
   };
 
+  const pruneUsageLog = async () => {
+    const msg = lang === 'zh' ? `清除 ${cleanupDays} 天前的 usage_log？` : `Delete usage_log older than ${cleanupDays} days?`;
+    if (!confirm(msg)) return;
+    await api('admin_prune_usage_log', { days: cleanupDays }, authToken);
+    loadUsage();
+  };
+
+  const pruneReports = async () => {
+    const msg = lang === 'zh' ? `每組只保留最近 ${cleanupKeepReports} 份報告，繼續？` : `Keep only the latest ${cleanupKeepReports} reports per group?`;
+    if (!confirm(msg)) return;
+    await api('admin_prune_reports', { keep: cleanupKeepReports }, authToken);
+    loadUsage();
+  };
+
+  const pruneKB = async () => {
+    const msg = lang === 'zh' ? `刪除 ${cleanupDays} 天前的 knowledge_base，並清掉 low relevance，繼續？` : `Delete knowledge_base older than ${cleanupDays} days and low relevance rows?`;
+    if (!confirm(msg)) return;
+    await api('admin_prune_kb', { days: cleanupDays }, authToken);
+    loadKB();
+  };
+
   const tabBtn = (id, label) => (
     <button onClick={() => setAdminTab(id)} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${adminTab === id ? 'bg-primary text-white dark:bg-secondary dark:text-primary' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>{label}</button>
   );
 
   return (
     <div className="animate-fade-in space-y-6">
+      <div className="bg-amber-50 dark:bg-amber-900/10 border-2 border-amber-300 dark:border-amber-700 rounded-2xl p-5 mb-4 shadow-sm">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <h3 className="font-serif font-bold text-lg text-amber-900 dark:text-amber-200">{lang === 'zh' ? '資料清理工具' : 'Data Cleanup Tools'}</h3>
+            <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-1">{lang === 'zh' ? '用來清除舊的使用紀錄、知識庫資料與歷史報告。此操作會直接影響 D1 資料庫。' : 'Use these tools to delete old usage logs, knowledge base entries, and historical reports from D1.'}</p>
+          </div>
+          <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">ADMIN ONLY</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <label className="text-sm lg:col-span-1">
+            <span className="block text-slate-600 dark:text-slate-300 mb-1 font-medium">{lang === 'zh' ? '保留天數' : 'Retention days'}</span>
+            <input type="number" min="1" value={cleanupDays} onChange={e => setCleanupDays(Number(e.target.value) || 90)} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white" />
+          </label>
+          <label className="text-sm lg:col-span-1">
+            <span className="block text-slate-600 dark:text-slate-300 mb-1 font-medium">{lang === 'zh' ? '每組保留報告' : 'Keep reports/group'}</span>
+            <input type="number" min="1" value={cleanupKeepReports} onChange={e => setCleanupKeepReports(Number(e.target.value) || 20)} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm dark:text-white" />
+          </label>
+          <button onClick={pruneUsageLog} className="px-3 py-2.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">{lang === 'zh' ? '清 usage_log' : 'Prune usage_log'}</button>
+          <button onClick={pruneKB} className="px-3 py-2.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">{lang === 'zh' ? '清 knowledge_base' : 'Prune KB'}</button>
+          <button onClick={pruneReports} className="px-3 py-2.5 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700 border border-red-700">{lang === 'zh' ? '清 reports' : 'Prune reports'}</button>
+        </div>
+      </div>
+
       <div className="flex gap-2 flex-wrap">
         {tabBtn('tokens', lang === 'zh' ? 'Token 管理' : 'Token Management')}
         {tabBtn('kb', lang === 'zh' ? '知識庫統計' : 'KB Stats')}
